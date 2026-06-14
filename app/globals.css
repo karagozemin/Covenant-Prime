@@ -467,6 +467,75 @@ button:not(:disabled):active, a:active {
   height: 1px;
   background: #d8dce5;
 }
+.covenant-progress {
+  min-height: 76px;
+  margin: -6px 0 22px;
+  padding: 15px 17px;
+  border: 1px solid #cbd5ff;
+  border-radius: 12px;
+  background: #f5f7ff;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 13px;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(55,91,255,.08);
+}
+.covenant-progress > span {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: #e5eaff;
+  color: var(--blue);
+  display: grid;
+  place-items: center;
+}
+.covenant-progress strong,
+.covenant-progress small {
+  display: block;
+}
+.covenant-progress strong {
+  font-size: 13px;
+}
+.covenant-progress small {
+  margin-top: 4px;
+  color: #697080;
+  font-size: 10px;
+}
+.covenant-progress a {
+  margin-top: 7px;
+  color: var(--blue);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.covenant-progress > i {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  position: absolute;
+  left: -35%;
+  right: 65%;
+  bottom: 0;
+  animation: covenant-confirming 1.2s ease-in-out infinite;
+}
+.covenant-progress.confirmed {
+  border-color: #a9dfc8;
+  background: #f2fbf7;
+}
+.covenant-progress.confirmed > span {
+  background: var(--green-soft);
+  color: var(--green);
+  animation: result-pop .45s ease both;
+}
+.covenant-progress.confirmed > i {
+  left: 0;
+  right: 0;
+  background: var(--green);
+  animation: none;
+}
 .console-gate {
   margin: -5px 0 18px;
   padding: 15px 17px;
@@ -499,6 +568,11 @@ button:not(:disabled):active, a:active {
   cursor: not-allowed;
   border-color: #aeb4c0;
   background: #aeb4c0;
+}
+
+@keyframes covenant-confirming {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(450%); }
 }
 
 @media(max-width: 700px) {

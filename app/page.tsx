@@ -40,6 +40,7 @@ declare global {
 
 type ActionStatus = "approved" | "refused";
 type AppTab = "overview" | "console" | "proofs" | "covenant";
+type CovenantStage = "wallet" | "confirming" | "confirmed" | null;
 
 type Action = {
   id: number;
@@ -98,6 +99,19 @@ const routerAbi = [{
   ] }], outputs: [{ type: "bool" }, { type: "uint8" }, { type: "uint256" }],
 }] as const;
 
+const transactionFees = async () => {
+  const [block, estimated] = await Promise.all([
+    publicClient.getBlock(),
+    publicClient.estimateFeesPerGas(),
+  ]);
+  const priorityFee = estimated.maxPriorityFeePerGas || 1n;
+  const baseFee = block.baseFeePerGas || estimated.maxFeePerGas;
+  return {
+    maxFeePerGas: baseFee * 3n + priorityFee,
+    maxPriorityFeePerGas: priorityFee,
+  };
+};
+
 const seedActions: Action[] = [
   { id: 2288, name: "Buy mNVDA", description: "Increase semiconductor exposure", asset: "mNVDA", amount: "200 USDC", status: "approved", reason: "All covenant checks passed", hash: "0x2b278b8be87fbed7416b4c8bb850bbcd30a2e177a51ca0296a587dd0990e20f1", onchain: true },
   { id: 2287, name: "Transfer USDC", description: "Send funds to unknown wallet", asset: "USDC", amount: "450 USDC", status: "refused", reason: "Unauthorized recipient", hash: "0xff68df238373c5e6eef53a1cb97edd9df7877c11dab08323ab8731bce9072a17", onchain: true },
@@ -123,6 +137,8 @@ export default function Home() {
   const [account, setAccount] = useState<`0x${string}` | null>(null);
   const [activeCovenantId, setActiveCovenantId] = useState<bigint | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
+  const [covenantStage, setCovenantStage] = useState<CovenantStage>(null);
+  const [pendingCovenantHash, setPendingCovenantHash] = useState<`0x${string}` | null>(null);
 
   const proofs = useMemo(() => actions.filter((action) => action.status === "refused"), [actions]);
   const openProduct = () => {
@@ -146,6 +162,8 @@ export default function Home() {
 
   const createCovenant = async () => {
     setProcessing("Create covenant");
+    setCovenantStage("wallet");
+    setPendingCovenantHash(null);
     setWalletError(null);
     try {
       const provider = window.ethereum;
@@ -181,7 +199,7 @@ export default function Home() {
         functionName: "createCovenant",
         args: [config],
       });
-      const { maxFeePerGas, maxPriorityFeePerGas } = await publicClient.estimateFeesPerGas();
+      const { maxFeePerGas, maxPriorityFeePerGas } = await transactionFees();
       const hash = await provider.request({
         method: "eth_sendTransaction",
         params: [{
@@ -189,20 +207,27 @@ export default function Home() {
           to: contracts.vault,
           data,
           gas: numberToHex(3_000_000),
-          maxFeePerGas: numberToHex(maxFeePerGas * 2n),
+          maxFeePerGas: numberToHex(maxFeePerGas),
           maxPriorityFeePerGas: numberToHex(maxPriorityFeePerGas),
         }],
       }) as `0x${string}`;
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      setPendingCovenantHash(hash);
+      setCovenantStage("confirming");
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 2 });
       if (receipt.status !== "success") throw new Error("Covenant transaction reverted on-chain.");
       setActiveCovenantId(covenantId);
+      setCovenantStage("confirmed");
       setToast({ id: Number(covenantId), name: "Covenant created", description: "Your wallet owns and operates this mandate", asset: "M-" + covenantId, amount: "7 days", status: "approved", reason: "User-signed covenant is enforced", hash, onchain: true, covenantId: String(covenantId) });
+      await new Promise((resolve) => window.setTimeout(resolve, 1600));
       setTab("console");
       window.setTimeout(() => setToast(null), 3600);
     } catch (error) {
       setWalletError(errorMessage(error));
+      setCovenantStage(null);
+      setPendingCovenantHash(null);
     } finally {
       setProcessing(null);
+      setCovenantStage(null);
     }
   };
 
@@ -218,19 +243,36 @@ export default function Home() {
     try {
       const provider = window.ethereum;
       if (!provider) throw new Error("Install MetaMask to continue.");
-      const wallet = createWalletClient({ chain: arbitrumSepolia, transport: custom(provider) });
       const isVote = scenario.name === "Vote";
       const isRebalance = scenario.name === "Rebalance";
       const isDisclosure = scenario.name === "Private disclosure";
       const isTransfer = scenario.name === "Unknown wallet";
       const amount = scenario.name === "Exceed cap" ? 900_000_000n : scenario.name === "Buy mNVDA" ? 200_000_000n : isRebalance ? 180_000_000n : isTransfer ? 450_000_000n : 0n;
-      const hash = await wallet.writeContract({ account, address: contracts.router, abi: routerAbi, functionName: "proposeAction", args: [{
+      const request = {
         covenantId: activeCovenantId, agent: account, actionType: isVote ? 3 : isDisclosure ? 4 : isTransfer ? 2 : isRebalance ? 7 : 0,
         asset: isRebalance ? contracts.mAAPL : contracts.mNVDA, target: isVote || isDisclosure || isRebalance ? contracts.corporateActions : contracts.exchange,
         amount, recipient: isTransfer ? "0x000000000000000000000000000000000000dEaD" : account, slippageBps: 50, usesLeverage: false,
         metadataHash: keccak256(toBytes(`COVENANT_PRIME_${scenario.name}_${Date.now()}`)),
-      }] });
-      await publicClient.waitForTransactionReceipt({ hash });
+      } as const;
+      const data = encodeFunctionData({
+        abi: routerAbi,
+        functionName: "proposeAction",
+        args: [request],
+      });
+      const { maxFeePerGas, maxPriorityFeePerGas } = await transactionFees();
+      const hash = await provider.request({
+        method: "eth_sendTransaction",
+        params: [{
+          from: account,
+          to: contracts.router,
+          data,
+          gas: numberToHex(1_500_000),
+          maxFeePerGas: numberToHex(maxFeePerGas),
+          maxPriorityFeePerGas: numberToHex(maxPriorityFeePerGas),
+        }],
+      }) as `0x${string}`;
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("Agent action transaction reverted on-chain.");
       const id = 2289 + actions.length;
       const action: Action = { ...scenario, id, hash, onchain: true, covenantId: String(activeCovenantId) };
       setActions((current) => [action, ...current]);
@@ -245,7 +287,7 @@ export default function Home() {
   };
 
   if (appOpen) {
-    return <ProductApp tab={tab} setTab={setTab} actions={actions} proofs={proofs} runScenario={runScenario} selected={selected} setSelected={setSelected} closeApp={() => setAppOpen(false)} toast={toast} closeToast={() => setToast(null)} processing={processing} account={account} connectWallet={connectWallet} activeCovenantId={activeCovenantId} createCovenant={createCovenant} walletError={walletError} clearWalletError={() => setWalletError(null)} />;
+    return <ProductApp tab={tab} setTab={setTab} actions={actions} proofs={proofs} runScenario={runScenario} selected={selected} setSelected={setSelected} closeApp={() => setAppOpen(false)} toast={toast} closeToast={() => setToast(null)} processing={processing} account={account} connectWallet={connectWallet} activeCovenantId={activeCovenantId} createCovenant={createCovenant} walletError={walletError} clearWalletError={() => setWalletError(null)} covenantStage={covenantStage} pendingCovenantHash={pendingCovenantHash} />;
   }
 
   return <Landing openApp={openProduct} runScenario={runScenario} toast={toast} closeToast={() => setToast(null)} processing={processing} />;
@@ -343,7 +385,7 @@ function Life({ number, title, copy }: { number: string; title: string; copy: st
   return <div className="life"><span>{number}</span><h3>{title}</h3><p>{copy}</p><ArrowUpRight size={15} /></div>;
 }
 
-function ProductApp({ tab, setTab, actions, proofs, runScenario, selected, setSelected, closeApp, toast, closeToast, processing, account, connectWallet, activeCovenantId, createCovenant, walletError, clearWalletError }: { tab: AppTab; setTab: (tab: AppTab) => void; actions: Action[]; proofs: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => Promise<void>; selected: Action | null; setSelected: (action: Action | null) => void; closeApp: () => void; toast: Action | null; closeToast: () => void; processing: string | null; account: `0x${string}` | null; connectWallet: () => Promise<unknown>; activeCovenantId: bigint | null; createCovenant: () => Promise<void>; walletError: string | null; clearWalletError: () => void }) {
+function ProductApp({ tab, setTab, actions, proofs, runScenario, selected, setSelected, closeApp, toast, closeToast, processing, account, connectWallet, activeCovenantId, createCovenant, walletError, clearWalletError, covenantStage, pendingCovenantHash }: { tab: AppTab; setTab: (tab: AppTab) => void; actions: Action[]; proofs: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => Promise<void>; selected: Action | null; setSelected: (action: Action | null) => void; closeApp: () => void; toast: Action | null; closeToast: () => void; processing: string | null; account: `0x${string}` | null; connectWallet: () => Promise<unknown>; activeCovenantId: bigint | null; createCovenant: () => Promise<void>; walletError: string | null; clearWalletError: () => void; covenantStage: CovenantStage; pendingCovenantHash: `0x${string}` | null }) {
   return (
     <main className="app">
       <header className="app-header"><button onClick={closeApp}><Logo /></button><nav>{(["overview", "console", "proofs", "covenant"] as AppTab[]).map((item) => <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item === "console" ? "Agent console" : item}{item === "proofs" && <b>{proofs.length}</b>}</button>)}</nav><div><span className="network"><i /> Arbitrum Sepolia</span><button className={`wallet-button ${account ? "connected" : ""}`} onClick={() => void connectWallet().catch(() => undefined)}><Wallet size={15} /> {account ? shortAddress(account) : "Connect wallet"} <ChevronDown size={13} /></button></div></header>
@@ -352,7 +394,7 @@ function ProductApp({ tab, setTab, actions, proofs, runScenario, selected, setSe
         {tab === "overview" && <AppOverview actions={actions} proofs={proofs} setTab={setTab} select={setSelected} />}
         {tab === "console" && <AgentConsole actions={actions} runScenario={runScenario} select={setSelected} processing={processing} ready={Boolean(account && activeCovenantId)} openCovenant={() => setTab("covenant")} />}
         {tab === "proofs" && <ProofDashboard proofs={proofs} select={setSelected} />}
-        {tab === "covenant" && <Covenant account={account} activeCovenantId={activeCovenantId} createCovenant={createCovenant} processing={processing} />}
+        {tab === "covenant" && <Covenant account={account} activeCovenantId={activeCovenantId} createCovenant={createCovenant} processing={processing} stage={covenantStage} pendingHash={pendingCovenantHash} />}
       </div>
       {selected && <ActionModal action={selected} close={() => setSelected(null)} />}
       {toast && <Toast action={toast} close={closeToast} />}
@@ -392,9 +434,10 @@ function ProofDashboard({ proofs, select }: { proofs: Action[]; select: (action:
   return <div className="app-content"><AppTitle eyebrow="Verifiable safety record" title="Refusal proofs" copy="On-chain evidence that unsafe agent actions were blocked before settlement." /><div className="proof-banner"><Fingerprint size={25} /><div><strong>Unsafe actions should leave evidence.</strong><p>Every refusal records the attempted action, violated rule, agent, amount, and action hash.</p></div><span>{proofs.length + 285}<small>Total proofs</small></span></div><section className="app-panel"><PanelTitle title="Proof registry" /><ActionList actions={proofs} select={select} /></section></div>;
 }
 
-function Covenant({ account, activeCovenantId, createCovenant, processing }: { account: `0x${string}` | null; activeCovenantId: bigint | null; createCovenant: () => Promise<void>; processing: string | null }) {
+function Covenant({ account, activeCovenantId, createCovenant, processing, stage, pendingHash }: { account: `0x${string}` | null; activeCovenantId: bigint | null; createCovenant: () => Promise<void>; processing: string | null; stage: CovenantStage; pendingHash: `0x${string}` | null }) {
   const active = activeCovenantId !== null;
-  return <div className="app-content"><AppTitle eyebrow={active ? "On-chain policy" : "Start here"} title={active ? `Covenant #${activeCovenantId}` : "Create your covenant"} copy={active ? "This boundary is enforced by the Mandate Engine on Arbitrum Sepolia." : "Connect your wallet and sign the transaction to become the on-chain owner and assigned agent."} action={<button disabled={active || Boolean(processing)} className="app-primary" onClick={() => void createCovenant()}><Plus size={15} /> {processing === "Create covenant" ? "Waiting for MetaMask…" : active ? "Covenant enforced" : account ? "Sign & create covenant" : "Connect & create"}</button>} /><div className="product-flow"><span className={account ? "done" : "current"}><b>01</b> Connect wallet</span><i /><span className={active ? "done" : account ? "current" : ""}><b>02</b> Sign & create</span><i /><span className={active ? "current" : ""}><b>03</b> Use Agent Console</span></div><div className="policy-layout"><section className="app-panel policy"><PanelTitle title="Agent authority" /><Policy label="Owner & assigned agent" value={account ? shortAddress(account) : "Connect wallet"} /><Policy label="Maximum total spend" value="10,000 USDC" /><Policy label="Maximum single action" value="500 USDC" /><Policy label="Daily volume limit" value="2,500 USDC" /><Policy label="Maximum slippage" value="1.00%" /></section><section className="app-panel policy"><PanelTitle title="Lifecycle permissions" /><Policy label="Corporate actions" value="Allowed" good /><Policy label="Auditor disclosure" value="Blocked" /><Policy label="Leverage" value="Blocked" /><Policy label="Mandate expiry" value="7 days after creation" /><Policy label="Status" value={active ? "Enforced" : "Draft"} good={active} /></section></div></div>;
+  const buttonLabel = stage === "wallet" ? "Confirm in MetaMask…" : stage === "confirming" ? "Confirming on-chain…" : stage === "confirmed" ? "Covenant enforced" : active ? "Covenant enforced" : account ? "Sign & create covenant" : "Connect & create";
+  return <div className="app-content"><AppTitle eyebrow={active ? "On-chain policy" : "Start here"} title={active ? `Covenant #${activeCovenantId}` : "Create your covenant"} copy={active ? "This boundary is enforced by the Mandate Engine on Arbitrum Sepolia." : "Connect your wallet and sign the transaction to become the on-chain owner and assigned agent."} action={<button disabled={active || Boolean(processing)} className="app-primary" onClick={() => void createCovenant()}>{stage === "confirmed" ? <BadgeCheck size={15} /> : stage ? <Clock3 size={15} /> : <Plus size={15} />} {buttonLabel}</button>} /><div className="product-flow"><span className={account ? "done" : "current"}><b>01</b> Connect wallet</span><i /><span className={active ? "done" : account ? "current" : ""}><b>02</b> Sign & create</span><i /><span className={active ? "current" : ""}><b>03</b> Use Agent Console</span></div>{stage && <div className={`covenant-progress ${stage}`}><span>{stage === "confirmed" ? <BadgeCheck size={22} /> : <Clock3 size={22} />}</span><div><strong>{stage === "wallet" ? "Waiting for your signature" : stage === "confirming" ? "Creating your covenant on-chain" : "Covenant enforced successfully"}</strong><small>{stage === "wallet" ? "Confirm the transaction in MetaMask to continue." : stage === "confirming" ? "Transaction submitted. Waiting for Arbitrum Sepolia confirmations before opening Agent Console." : "Everything is ready. Opening Agent Console…"}</small>{pendingHash && <a href={`https://sepolia.arbiscan.io/tx/${pendingHash}`} target="_blank" rel="noreferrer">View transaction <ArrowUpRight size={12} /></a>}</div><i /></div>}<div className="policy-layout"><section className="app-panel policy"><PanelTitle title="Agent authority" /><Policy label="Owner & assigned agent" value={account ? shortAddress(account) : "Connect wallet"} /><Policy label="Maximum total spend" value="10,000 USDC" /><Policy label="Maximum single action" value="500 USDC" /><Policy label="Daily volume limit" value="2,500 USDC" /><Policy label="Maximum slippage" value="1.00%" /></section><section className="app-panel policy"><PanelTitle title="Lifecycle permissions" /><Policy label="Corporate actions" value="Allowed" good /><Policy label="Auditor disclosure" value="Blocked" /><Policy label="Leverage" value="Blocked" /><Policy label="Mandate expiry" value="7 days after creation" /><Policy label="Status" value={active ? "Enforced" : stage === "confirming" ? "Confirming" : "Draft"} good={active} /></section></div></div>;
 }
 
 function Policy({ label, value, good }: { label: string; value: string; good?: boolean }) {
