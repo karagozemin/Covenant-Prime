@@ -342,6 +342,31 @@ button:not(:disabled):active, a:active {
 .landing .developer .big-secondary {
   border-color: rgba(255,107,85,.55);
 }
+.simulation-note {
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #d9dce5;
+  border-radius: 8px;
+  background: #f4f5f8;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #555c69;
+}
+.simulation-note svg {
+  color: #ff6b55;
+}
+.simulation-note strong,
+.simulation-note span {
+  display: block;
+}
+.simulation-note strong {
+  font-size: 10px;
+}
+.simulation-note span {
+  margin-top: 3px;
+  font-size: 8px;
+}
 
 .machine-proof {
   margin: 11px 0 0;
@@ -382,4 +407,112 @@ button:not(:disabled):active, a:active {
   background: rgba(217,255,87,.08);
   color: var(--acid);
   letter-spacing: .04em;
+}
+
+/* Real product flow */
+.wallet-button.connected {
+  border-color: rgba(22,135,92,.35);
+  background: #f1fbf7;
+  color: #116b49;
+}
+.wallet-error {
+  min-height: 42px;
+  padding: 9px max(24px, calc((100vw - 1260px) / 2));
+  background: #fff0ed;
+  border-bottom: 1px solid #ffc5bb;
+  color: #a83425;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.wallet-error button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.product-flow {
+  margin: -5px 0 22px;
+  padding: 13px 16px;
+  border: 1px solid #dfe2e9;
+  border-radius: 12px;
+  background: white;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 3px 0 #e1e3eb;
+}
+.product-flow span {
+  color: #7a808c;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.product-flow span b {
+  color: inherit;
+  font: 500 9px "DM Mono";
+}
+.product-flow span.current {
+  color: var(--blue);
+}
+.product-flow span.done {
+  color: var(--green);
+}
+.product-flow i {
+  width: 30px;
+  height: 1px;
+  background: #d8dce5;
+}
+.console-gate {
+  margin: -5px 0 18px;
+  padding: 15px 17px;
+  border: 1px solid #ffd0c8;
+  border-left: 4px solid var(--coral);
+  border-radius: 11px;
+  background: #fff7f5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.console-gate strong,
+.console-gate span {
+  display: block;
+}
+.console-gate strong {
+  font-size: 13px;
+}
+.console-gate span {
+  margin-top: 4px;
+  color: #6d717c;
+  font-size: 11px;
+}
+.scenario-list button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+.app-primary:disabled {
+  cursor: not-allowed;
+  border-color: #aeb4c0;
+  background: #aeb4c0;
+}
+
+@media(max-width: 700px) {
+  .product-flow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .product-flow i {
+    width: 1px;
+    height: 12px;
+    margin-left: 8px;
+  }
+  .console-gate {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
