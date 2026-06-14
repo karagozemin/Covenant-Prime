@@ -67,30 +67,36 @@ export default function Home() {
   const [actions, setActions] = useState<Action[]>(seedActions);
   const [selected, setSelected] = useState<Action | null>(null);
   const [toast, setToast] = useState<Action | null>(null);
+  const [processing, setProcessing] = useState<string | null>(null);
 
   const proofs = useMemo(() => actions.filter((action) => action.status === "refused"), [actions]);
 
   const runScenario = (scenario: (typeof scenarios)[number]) => {
+    if (processing) return;
+    setProcessing(scenario.name);
     const id = 2289 + actions.length;
     const action: Action = { ...scenario, id, hash: makeHash(id) };
-    setActions((current) => [action, ...current]);
-    setToast(action);
-    if (action.status === "refused") setSelected(action);
-    window.setTimeout(() => setToast(null), 3600);
+    window.setTimeout(() => {
+      setActions((current) => [action, ...current]);
+      setToast(action);
+      setProcessing(null);
+      if (action.status === "refused") setSelected(action);
+      window.setTimeout(() => setToast(null), 3600);
+    }, 620);
   };
 
   if (appOpen) {
-    return <ProductApp tab={tab} setTab={setTab} actions={actions} proofs={proofs} runScenario={runScenario} selected={selected} setSelected={setSelected} closeApp={() => setAppOpen(false)} toast={toast} closeToast={() => setToast(null)} />;
+    return <ProductApp tab={tab} setTab={setTab} actions={actions} proofs={proofs} runScenario={runScenario} selected={selected} setSelected={setSelected} closeApp={() => setAppOpen(false)} toast={toast} closeToast={() => setToast(null)} processing={processing} />;
   }
 
-  return <Landing openApp={() => setAppOpen(true)} runScenario={runScenario} toast={toast} closeToast={() => setToast(null)} />;
+  return <Landing openApp={() => setAppOpen(true)} runScenario={runScenario} toast={toast} closeToast={() => setToast(null)} processing={processing} />;
 }
 
 function Logo() {
-  return <span className="logo"><span className="logo-shield"><ShieldCheck size={18} /></span><strong>Covenant</strong><b>Prime</b></span>;
+  return <span className="logo"><span className="logo-mark"><img src="/covenant-prime-mark.png" alt="" /></span><strong>Covenant</strong><b>Prime</b></span>;
 }
 
-function Landing({ openApp, runScenario, toast, closeToast }: { openApp: () => void; runScenario: (scenario: (typeof scenarios)[number]) => void; toast: Action | null; closeToast: () => void }) {
+function Landing({ openApp, runScenario, toast, closeToast, processing }: { openApp: () => void; runScenario: (scenario: (typeof scenarios)[number]) => void; toast: Action | null; closeToast: () => void; processing: string | null }) {
   return (
     <main className="landing">
       <nav className="landing-nav">
@@ -127,7 +133,7 @@ function Landing({ openApp, runScenario, toast, closeToast }: { openApp: () => v
         <div className="demo-intro"><span className="section-label">Try it yourself</span><h2>Attack the agent.<br /><em>The covenant holds.</em></h2><p>Run real demo scenarios against Covenant #0001. Safe actions pass. Unsafe actions are refused before execution.</p><button className="big-primary" onClick={openApp}>Open full agent console <ArrowUpRight size={16} /></button></div>
         <div className="demo-board">
           <div className="demo-board-head"><div><span className="pulse" /> COVENANT #0001 · LIVE</div><span>$500/action · 1% slippage · no leverage</span></div>
-          <div className="demo-scenarios">{scenarios.map((scenario) => <button key={scenario.name} onClick={() => runScenario(scenario)}><span className={`demo-icon ${scenario.status}`}><scenario.icon size={17} /></span><div><strong>{scenario.name}</strong><small>{scenario.description}</small></div><span className={`try ${scenario.status}`}>{scenario.status === "approved" ? "Safe" : "Attack"} <ArrowUpRight size={12} /></span></button>)}</div>
+          <div className="demo-scenarios">{scenarios.map((scenario) => <button className={processing === scenario.name ? "processing" : ""} key={scenario.name} onClick={() => runScenario(scenario)}><span className={`demo-icon ${scenario.status}`}><scenario.icon size={17} /></span><div><strong>{scenario.name}</strong><small>{scenario.description}</small></div><span className={`try ${scenario.status}`}>{processing === scenario.name ? "Validating" : scenario.status === "approved" ? "Safe" : "Attack"} <ArrowUpRight size={12} /></span></button>)}</div>
         </div>
       </section>
 
@@ -169,7 +175,7 @@ function HeroMachine() {
         <div className="check-list"><span><Check size={12} /> Agent assigned</span><span><Check size={12} /> Asset allowed</span><span><Check size={12} /> Within spend limit</span><span><Check size={12} /> Slippage safe</span></div>
       </div>
       <div className="machine-result"><BadgeCheck size={20} /><div><span>EXECUTED</span><strong>Receipt #001048</strong></div><ArrowUpRight size={15} /></div>
-      <div className="machine-proof"><Fingerprint size={17} /><span>Unsafe actions produce refusal proofs</span><b>287 recorded</b></div>
+      <div className="machine-proof"><span className="proof-symbol"><Fingerprint size={15} /></span><span className="proof-badge">REFUSAL PROOF</span><span>Unsafe actions produce refusal proofs</span><b>287 recorded</b></div>
     </div>
   );
 }
@@ -178,14 +184,16 @@ function Life({ number, title, copy }: { number: string; title: string; copy: st
   return <div className="life"><span>{number}</span><h3>{title}</h3><p>{copy}</p><ArrowUpRight size={15} /></div>;
 }
 
-function ProductApp({ tab, setTab, actions, proofs, runScenario, selected, setSelected, closeApp, toast, closeToast }: { tab: AppTab; setTab: (tab: AppTab) => void; actions: Action[]; proofs: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => void; selected: Action | null; setSelected: (action: Action | null) => void; closeApp: () => void; toast: Action | null; closeToast: () => void }) {
+function ProductApp({ tab, setTab, actions, proofs, runScenario, selected, setSelected, closeApp, toast, closeToast, processing }: { tab: AppTab; setTab: (tab: AppTab) => void; actions: Action[]; proofs: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => void; selected: Action | null; setSelected: (action: Action | null) => void; closeApp: () => void; toast: Action | null; closeToast: () => void; processing: string | null }) {
   return (
     <main className="app">
       <header className="app-header"><button onClick={closeApp}><Logo /></button><nav>{(["overview", "console", "proofs", "covenant"] as AppTab[]).map((item) => <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item === "console" ? "Agent console" : item}{item === "proofs" && <b>{proofs.length}</b>}</button>)}</nav><div><span className="network"><i /> Arbitrum Sepolia</span><button className="wallet-button"><Wallet size={15} /> 0x71C2...9F4A <ChevronDown size={13} /></button></div></header>
-      {tab === "overview" && <AppOverview actions={actions} proofs={proofs} setTab={setTab} select={setSelected} />}
-      {tab === "console" && <AgentConsole actions={actions} runScenario={runScenario} select={setSelected} />}
-      {tab === "proofs" && <ProofDashboard proofs={proofs} select={setSelected} />}
-      {tab === "covenant" && <Covenant />}
+      <div key={tab} className="view-transition">
+        {tab === "overview" && <AppOverview actions={actions} proofs={proofs} setTab={setTab} select={setSelected} />}
+        {tab === "console" && <AgentConsole actions={actions} runScenario={runScenario} select={setSelected} processing={processing} />}
+        {tab === "proofs" && <ProofDashboard proofs={proofs} select={setSelected} />}
+        {tab === "covenant" && <Covenant />}
+      </div>
       {selected && <ActionModal action={selected} close={() => setSelected(null)} />}
       {toast && <Toast action={toast} close={closeToast} />}
     </main>
@@ -216,8 +224,8 @@ function CovenantCard({ setTab }: { setTab: (tab: AppTab) => void }) {
   return <section className="app-panel covenant-card"><PanelTitle title="Active covenant" action={<span className="enforced"><i /> Enforced</span>} /><div className="covenant-number"><span>Total authority</span><strong>$10,000</strong><div><span style={{ width: "34%" }} /></div><small>$3,400 used · $6,600 available</small></div><dl><div><dt>Single action</dt><dd>$500 max</dd></div><div><dt>Daily volume</dt><dd>$2,500 max</dd></div><div><dt>Slippage</dt><dd>1.00% max</dd></div><div><dt>Leverage</dt><dd>Blocked</dd></div></dl><div className="asset-pills"><span>mAAPL</span><span>mNVDA</span><span>mTSLA</span></div><button className="app-secondary" onClick={() => setTab("covenant")}>View covenant <ArrowUpRight size={13} /></button></section>;
 }
 
-function AgentConsole({ actions, runScenario, select }: { actions: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => void; select: (action: Action) => void }) {
-  return <div className="app-content"><AppTitle eyebrow="Live simulation" title="Agent console" copy="Propose actions against the active covenant and inspect the on-chain decision." /><div className="console-layout"><section className="scenario-panel"><PanelTitle title="Propose an action" /><div className="scenario-list">{scenarios.map((scenario) => <button key={scenario.name} onClick={() => runScenario(scenario)}><span className={`scenario-icon ${scenario.status}`}><scenario.icon size={18} /></span><div><strong>{scenario.name}</strong><small>{scenario.description}</small></div><span>{scenario.amount}</span><ArrowUpRight size={14} /></button>)}</div></section><section className="app-panel stream"><PanelTitle title="Decision stream" action={<span className="live"><i /> Live</span>} /><ActionList actions={actions.slice(0, 7)} select={select} /></section></div></div>;
+function AgentConsole({ actions, runScenario, select, processing }: { actions: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => void; select: (action: Action) => void; processing: string | null }) {
+  return <div className="app-content"><AppTitle eyebrow="Live simulation" title="Agent console" copy="Propose actions against the active covenant and inspect the on-chain decision." /><div className="console-layout"><section className="scenario-panel"><PanelTitle title="Propose an action" /><div className="scenario-list">{scenarios.map((scenario) => <button className={processing === scenario.name ? "processing" : ""} key={scenario.name} onClick={() => runScenario(scenario)}><span className={`scenario-icon ${scenario.status}`}><scenario.icon size={18} /></span><div><strong>{scenario.name}</strong><small>{processing === scenario.name ? "Mandate engine is validating…" : scenario.description}</small></div><span>{processing === scenario.name ? "Checking" : scenario.amount}</span><ArrowUpRight size={14} /></button>)}</div></section><section className="app-panel stream"><PanelTitle title="Decision stream" action={<span className="live"><i /> Live</span>} /><ActionList actions={actions.slice(0, 7)} select={select} /></section></div></div>;
 }
 
 function ProofDashboard({ proofs, select }: { proofs: Action[]; select: (action: Action) => void }) {
