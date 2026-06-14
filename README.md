@@ -1,6 +1,10 @@
-# Covenant Prime
+<p align="center">
+  <img src="./public/covenant-prime-mark.png" alt="Covenant Prime logo" width="180" />
+</p>
 
-**AI-managed tokenized securities, enforced by on-chain covenants.**
+<h1 align="center">Covenant Prime</h1>
+
+<p align="center"><strong>AI-managed tokenized securities, enforced by on-chain covenants.</strong></p>
 
 Covenant Prime is a proof-gated execution and lifecycle layer for AI-managed tokenized securities. A user defines an on-chain mandate, an agent proposes actions, and the protocol either executes the action or records a verifiable refusal proof explaining why it was blocked.
 
