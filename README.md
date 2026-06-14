@@ -31,7 +31,7 @@ Open [http://localhost:3000](http://localhost:3000), then:
 4. Open Proof Dashboard and inspect a refusal proof.
 5. Show Lifecycle Mode and Auditor View.
 
-The frontend is an interactive deterministic demo surface. Contract calls are represented with realistic transaction hashes; deploy the contracts and connect these handlers for a live testnet demo.
+The frontend is an interactive demo surface seeded with real Arbitrum Sepolia execution and refusal transactions. New button-triggered scenarios remain deterministic simulations until wallet transaction handlers are connected.
 
 ## Contracts
 
@@ -83,23 +83,30 @@ cp .env.example .env
 source .env
 forge script script/Deploy.s.sol:Deploy \
   --rpc-url "$ARBITRUM_SEPOLIA_RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
+  --private-key "$DEPLOYER_PRIVATE_KEY" \
   --broadcast \
   --verify
 ```
 
 ### Deployment Addresses
 
-No testnet deployment is committed to this repository. After deployment, record addresses here and in the frontend environment:
+Deployed to **Arbitrum Sepolia** on June 14, 2026. Full deployment metadata and transaction hashes are available in [`deployments/arbitrum-sepolia.json`](deployments/arbitrum-sepolia.json).
+
+The deployed demo includes Covenant `#1`, one approved mNVDA execution receipt, and five refusal proofs covering cap, asset, recipient, slippage, and disclosure violations. All contracts are source-verified through Sourcify.
 
 | Network | Contract | Address |
 | --- | --- | --- |
-| Arbitrum Sepolia | CovenantVault | `TBD` |
-| Arbitrum Sepolia | MandateEngine | `TBD` |
-| Arbitrum Sepolia | ActionRouter | `TBD` |
-| Arbitrum Sepolia | RefusalProofRegistry | `TBD` |
-| Arbitrum Sepolia | MockExchange | `TBD` |
-| Arbitrum Sepolia | CorporateActionModule | `TBD` |
+| Arbitrum Sepolia | CovenantVault | [`0x3E17...5aa1`](https://sepolia.arbiscan.io/address/0x3E176ABabbbfeE371821662d15Bbfe1F80d75aa1) |
+| Arbitrum Sepolia | MandateEngine | [`0x7DF0...1dc7`](https://sepolia.arbiscan.io/address/0x7DF0EAB671058A2Dfd1a294a6E1DA92b54191dc7) |
+| Arbitrum Sepolia | ActionRouter | [`0xBd5B...c329`](https://sepolia.arbiscan.io/address/0xBd5B908a4ea337906c21608CE98B9C90E6B7c329) |
+| Arbitrum Sepolia | RefusalProofRegistry | [`0xC40a...0766`](https://sepolia.arbiscan.io/address/0xC40a333420931223Ed6a3979C761E7c33Ae90766) |
+| Arbitrum Sepolia | MockExchange | [`0x2bAb...3E17`](https://sepolia.arbiscan.io/address/0x2bAb2017CAC47929fdf70e9c9cA02A0A3eaf3E17) |
+| Arbitrum Sepolia | MockUSDC | [`0x16AC...91F8`](https://sepolia.arbiscan.io/address/0x16AC734d33377Ad18A8E494A56E0C9Ea11cC91F8) |
+| Arbitrum Sepolia | mAAPL | [`0xb0BC...eff8B`](https://sepolia.arbiscan.io/address/0xb0BCB050B5557F8Db56B9C063dAC6b4DBB4eff8B) |
+| Arbitrum Sepolia | mNVDA | [`0x0885...c110`](https://sepolia.arbiscan.io/address/0x0885e072A83f3b5950E0430C25b3F395962Ac110) |
+| Arbitrum Sepolia | mTSLA | [`0xe6E6...8072`](https://sepolia.arbiscan.io/address/0xe6E61B5f19938e103269611313C64C58FFB68072) |
+| Arbitrum Sepolia | CorporateActionModule | [`0x2e9a...C0C9`](https://sepolia.arbiscan.io/address/0x2e9a0D452842Be3300a14c5439c2A86a651dC0C9) |
+| Arbitrum Sepolia | AuditorDisclosureModule | [`0x2A2b...C928`](https://sepolia.arbiscan.io/address/0x2A2b4aB18A6C475CfcBd8f103106F52256f1C928) |
 
 ## Robinhood Chain Compatibility
 
@@ -122,7 +129,7 @@ SUBMISSION.md         Buildathon submission copy
 
 - Testnet hackathon proof of concept; not audited.
 - Mock exchange and mock tokenized stocks do not represent real securities.
-- Frontend demo actions are deterministic simulations until wired to deployed addresses.
+- New frontend demo actions are deterministic simulations; seeded receipt and refusal records link to real Arbitrum Sepolia transactions.
 - No oracle, signature relay, upgrade process, or production custody controls.
 
 ## Roadmap

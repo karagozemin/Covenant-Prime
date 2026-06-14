@@ -47,9 +47,9 @@ type Action = {
 const makeHash = (seed: number) => `0x${(BigInt(seed) * 83911723n).toString(16).padEnd(64, "c").slice(0, 64)}`;
 
 const seedActions: Action[] = [
-  { id: 2288, name: "Buy mNVDA", description: "Increase semiconductor exposure", asset: "mNVDA", amount: "200 USDC", status: "approved", reason: "All covenant checks passed", hash: makeHash(2288) },
-  { id: 2287, name: "Transfer USDC", description: "Send funds to unknown wallet", asset: "USDC", amount: "450 USDC", status: "refused", reason: "Unauthorized recipient", hash: makeHash(2287) },
-  { id: 2286, name: "Buy mNVDA", description: "Order exceeds single-action limit", asset: "mNVDA", amount: "900 USDC", status: "refused", reason: "Exceeds single-action limit", hash: makeHash(2286) },
+  { id: 2288, name: "Buy mNVDA", description: "Increase semiconductor exposure", asset: "mNVDA", amount: "200 USDC", status: "approved", reason: "All covenant checks passed", hash: "0x2b278b8be87fbed7416b4c8bb850bbcd30a2e177a51ca0296a587dd0990e20f1" },
+  { id: 2287, name: "Transfer USDC", description: "Send funds to unknown wallet", asset: "USDC", amount: "450 USDC", status: "refused", reason: "Unauthorized recipient", hash: "0xff68df238373c5e6eef53a1cb97edd9df7877c11dab08323ab8731bce9072a17" },
+  { id: 2286, name: "Buy mNVDA", description: "Order exceeds single-action limit", asset: "mNVDA", amount: "900 USDC", status: "refused", reason: "Exceeds single-action limit", hash: "0x6bac976bc2139d48904b2d374bbc51a0f58b6826c9c31b76f97e96244d2453a9" },
 ];
 
 const scenarios = [
@@ -241,7 +241,7 @@ function Policy({ label, value, good }: { label: string; value: string; good?: b
 }
 
 function ActionModal({ action, close }: { action: Action; close: () => void }) {
-  return <div className="modal-backdrop" onClick={close}><div className="action-modal" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={close}><X size={17} /></button><span className={`modal-icon ${action.status}`}>{action.status === "approved" ? <BadgeCheck size={27} /> : <Fingerprint size={27} />}</span><span className="modal-kicker">{action.status === "approved" ? "Execution receipt" : "Refusal proof"} #{action.id}</span><h2>{action.status === "approved" ? "Action executed" : "Action refused"}</h2><p>{action.reason}</p><dl><div><dt>Action</dt><dd>{action.name}</dd></div><div><dt>Asset</dt><dd>{action.asset}</dd></div><div><dt>Amount</dt><dd>{action.amount}</dd></div><div><dt>Covenant</dt><dd>#0001</dd></div></dl><div className="modal-hash"><span>Action hash</span><code>{action.hash}</code></div><button className="app-primary">View on Arbiscan <ArrowUpRight size={14} /></button></div></div>;
+  return <div className="modal-backdrop" onClick={close}><div className="action-modal" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={close}><X size={17} /></button><span className={`modal-icon ${action.status}`}>{action.status === "approved" ? <BadgeCheck size={27} /> : <Fingerprint size={27} />}</span><span className="modal-kicker">{action.status === "approved" ? "Execution receipt" : "Refusal proof"} #{action.id}</span><h2>{action.status === "approved" ? "Action executed" : "Action refused"}</h2><p>{action.reason}</p><dl><div><dt>Action</dt><dd>{action.name}</dd></div><div><dt>Asset</dt><dd>{action.asset}</dd></div><div><dt>Amount</dt><dd>{action.amount}</dd></div><div><dt>Covenant</dt><dd>#0001</dd></div></dl><div className="modal-hash"><span>Action hash</span><code>{action.hash}</code></div><a className="app-primary" href={`https://sepolia.arbiscan.io/tx/${action.hash}`} target="_blank" rel="noreferrer">View on Arbiscan <ArrowUpRight size={14} /></a></div></div>;
 }
 
 function Toast({ action, close }: { action: Action; close: () => void }) {

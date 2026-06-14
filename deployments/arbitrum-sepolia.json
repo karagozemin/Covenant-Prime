@@ -1,0 +1,39 @@
+{
+  "network": "Arbitrum Sepolia",
+  "chainId": 421614,
+  "deployedAt": "2026-06-14",
+  "deployer": "0x122C07D5654ceFE0Ae41E2A45A2845F20263dA5D",
+  "explorer": "https://sepolia.arbiscan.io",
+  "sourceVerification": "Sourcify",
+  "contracts": {
+    "CovenantVault": "0x3E176ABabbbfeE371821662d15Bbfe1F80d75aa1",
+    "MandateEngine": "0x7DF0EAB671058A2Dfd1a294a6E1DA92b54191dc7",
+    "ActionRouter": "0xBd5B908a4ea337906c21608CE98B9C90E6B7c329",
+    "RefusalProofRegistry": "0xC40a333420931223Ed6a3979C761E7c33Ae90766",
+    "MockExchange": "0x2bAb2017CAC47929fdf70e9c9cA02A0A3eaf3E17",
+    "MockUSDC": "0x16AC734d33377Ad18A8E494A56E0C9Ea11cC91F8",
+    "mAAPL": "0xb0BCB050B5557F8Db56B9C063dAC6b4DBB4eff8B",
+    "mNVDA": "0x0885e072A83f3b5950E0430C25b3F395962Ac110",
+    "mTSLA": "0xe6E61B5f19938e103269611313C64C58FFB68072",
+    "CorporateActionModule": "0x2e9a0D452842Be3300a14c5439c2A86a651dC0C9",
+    "AuditorDisclosureModule": "0x2A2b4aB18A6C475CfcBd8f103106F52256f1C928"
+  },
+  "transactions": {
+    "CovenantVault": "0x8b80b1b04a53bc352e0b12863c1e9c92fa35cbda762ede36606d654570fce1eb",
+    "MandateEngine": "0xf737a23e39b14987c5943894e5567a87a82b6539503dac3e431f8c92b96efc9f",
+    "RefusalProofRegistry": "0xa6aba2caa91543efec73e7c9060238ca66583aa788add72e1fb8150005835a81",
+    "ActionRouter": "0x1f573a07edd37084b3b52be569cc219fa128f0835f7c7dcc9540103c86f59076"
+  },
+  "demo": {
+    "covenantId": 1,
+    "createCovenant": "0x75e0c96c3e3ef457df9a371d4d70fc5d30591df8de5f69251b2a68b1e4604c61",
+    "approvedBuy": "0x2b278b8be87fbed7416b4c8bb850bbcd30a2e177a51ca0296a587dd0990e20f1",
+    "refusalProofs": {
+      "exceedsSingleActionLimit": "0x6bac976bc2139d48904b2d374bbc51a0f58b6826c9c31b76f97e96244d2453a9",
+      "disallowedAsset": "0x8c58e1226946ecb42941de164385b4855c780c7ebe65e7c4499b89b1fcb86980",
+      "unauthorizedRecipient": "0xff68df238373c5e6eef53a1cb97edd9df7877c11dab08323ab8731bce9072a17",
+      "highSlippage": "0x2580c297bcd1cb1e7bcee7635e07c342cc0b616919f2ae4a1b06c4ee3badcaba",
+      "disclosureNotAllowed": "0xd1ac37abccd309edbc7c17814ae9424fa2b5cb52c8598f0e696a499cbdfe5ca2"
+    }
+  }
+}
