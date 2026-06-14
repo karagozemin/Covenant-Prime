@@ -15,6 +15,8 @@ jobs:
         with:
           submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.2.3
       - run: forge fmt --check
       - run: forge test -vv
       - run: forge build --sizes
