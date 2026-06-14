@@ -102,7 +102,7 @@ function Landing({ openApp, runScenario, toast, closeToast, processing }: { open
       <nav className="landing-nav">
         <Logo />
         <div className="landing-links"><a href="#product">Product</a><a href="#why">Why Covenant</a><a href="#developers">Developers</a><a href="#demo">Live demo</a></div>
-        <div className="landing-actions"><button className="nav-ghost"><Github size={16} /> GitHub</button><button className="nav-launch" onClick={openApp}>Launch app <ArrowUpRight size={15} /></button></div>
+        <div className="landing-actions"><a className="nav-ghost" href="https://github.com/karagozemin/Covenant-Prime" target="_blank" rel="noreferrer"><Github size={16} /> GitHub</a><button className="nav-launch" onClick={openApp}>Launch app <ArrowUpRight size={15} /></button></div>
       </nav>
 
       <section className="landing-hero" id="product">
