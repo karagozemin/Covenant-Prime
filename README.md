@@ -190,7 +190,6 @@ Create `.env.local`:
 ```dotenv
 ARBITRUM_SEPOLIA_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
 DEPLOYER_PRIVATE_KEY=
-ETHERSCAN_API_KEY=
 ```
 
 Never expose `DEPLOYER_PRIVATE_KEY` in Vercel or any client environment.

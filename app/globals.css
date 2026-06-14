@@ -352,32 +352,6 @@ button:not(:disabled):active, a:active {
 .landing .developer .big-secondary {
   border-color: rgba(255,107,85,.55);
 }
-.simulation-note {
-  min-height: 48px;
-  padding: 10px 12px;
-  border: 1px solid #d9dce5;
-  border-radius: 8px;
-  background: #f4f5f8;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #555c69;
-}
-.simulation-note svg {
-  color: #ff6b55;
-}
-.simulation-note strong,
-.simulation-note span {
-  display: block;
-}
-.simulation-note strong {
-  font-size: 10px;
-}
-.simulation-note span {
-  margin-top: 3px;
-  font-size: 8px;
-}
-
 .machine-proof {
   margin: 11px 0 0;
   padding: 9px 11px;
@@ -395,9 +369,6 @@ button:not(:disabled):active, a:active {
   border-radius: 7px;
   background: rgba(255,107,85,.13);
   color: #ff6b55;
-}
-.machine-proof > svg {
-  display: none;
 }
 .proof-badge {
   padding: 5px 7px;

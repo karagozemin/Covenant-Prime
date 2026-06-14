@@ -11,13 +11,8 @@ import {
   Code2,
   Copy,
   Eye,
-  FileCheck2,
   Fingerprint,
   Github,
-  Globe2,
-  LockKeyhole,
-  Menu,
-  Orbit,
   Plus,
   ShieldCheck,
   Sparkles,
@@ -28,12 +23,13 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { createPublicClient, createWalletClient, custom, decodeEventLog, encodeFunctionData, formatUnits, http, keccak256, numberToHex, toBytes } from "viem";
+import { createPublicClient, decodeEventLog, encodeFunctionData, formatUnits, http, keccak256, numberToHex, toBytes } from "viem";
+import type { EIP1193Provider } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 
 declare global {
   interface Window {
-    ethereum?: Parameters<typeof custom>[0];
+    ethereum?: EIP1193Provider;
   }
 }
 
@@ -65,7 +61,6 @@ type Action = {
   status: ActionStatus;
   reason: string;
   hash: string;
-  onchain?: boolean;
   covenantId?: string;
   timestamp?: number;
   rawAmount?: bigint;
@@ -242,7 +237,6 @@ export default function Home() {
       status: "approved",
       reason: reasonLabels[0],
       hash: receiptHashes.get(String(receipt[0])) ?? receipt[2],
-      onchain: true,
       covenantId: String(receipt[1]),
       timestamp: Number(receipt[6]),
       rawAmount: receipt[5],
@@ -256,7 +250,6 @@ export default function Home() {
       status: "refused",
       reason: reasonLabels[Number(proof.reasonCode)] ?? `Reason code ${proof.reasonCode}`,
       hash: proofHashes.get(String(proof.proofId)) ?? proof.actionHash,
-      onchain: true,
       covenantId: String(proof.covenantId),
       timestamp: Number(proof.timestamp),
       rawAmount: proof.amount,
@@ -327,11 +320,9 @@ export default function Home() {
     } catch {
       await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x66eee", chainName: "Arbitrum Sepolia", nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://sepolia-rollup.arbitrum.io/rpc"], blockExplorerUrls: ["https://sepolia.arbiscan.io"] }] });
     }
-    const wallet = createWalletClient({ chain: arbitrumSepolia, transport: custom(window.ethereum) });
-    const [address] = await wallet.requestAddresses();
+    const [address] = await window.ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
     setAccount(address);
     await loadLatestCovenant(address);
-    return { wallet, address };
   };
 
   const createCovenant = async () => {
@@ -346,8 +337,7 @@ export default function Home() {
       if (chainId.toLowerCase() !== "0x66eee") {
         await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x66eee" }] });
       }
-      const wallet = createWalletClient({ chain: arbitrumSepolia, transport: custom(provider) });
-      const [address] = await wallet.requestAddresses();
+      const [address] = await provider.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
       setAccount(address);
       const latestBlock = await publicClient.getBlock();
       const config = {
@@ -394,7 +384,7 @@ export default function Home() {
       setActiveConfig(config as CovenantConfig);
       setActions([]);
       setCovenantStage("confirmed");
-      setToast({ id: Number(covenantId), name: "Covenant created", description: "Your wallet owns and operates this mandate", asset: "M-" + covenantId, amount: "7 days", status: "approved", reason: "User-signed covenant is enforced", hash, onchain: true, covenantId: String(covenantId) });
+      setToast({ id: Number(covenantId), name: "Covenant created", description: "Your wallet owns and operates this mandate", asset: "M-" + covenantId, amount: "7 days", status: "approved", reason: "User-signed covenant is enforced", hash, covenantId: String(covenantId) });
       await new Promise((resolve) => window.setTimeout(resolve, 1600));
       setTab("console");
       window.setTimeout(() => setToast(null), 3600);
@@ -483,7 +473,7 @@ export default function Home() {
         }
       }
       if (!status) throw new Error("The ActionRouter decision event was not found in the transaction receipt.");
-      const action: Action = { ...scenario, id: recordId, status, reason, hash, onchain: true, covenantId: String(activeCovenantId), rawAmount: amount, timestamp: Math.floor(Date.now() / 1000) };
+      const action: Action = { ...scenario, id: recordId, status, reason, hash, covenantId: String(activeCovenantId), rawAmount: amount, timestamp: Math.floor(Date.now() / 1000) };
       setActions((current) => [action, ...current]);
       setToast(action);
       if (action.status === "refused") setSelected(action);
@@ -658,7 +648,7 @@ function Policy({ label, value, good }: { label: string; value: string; good?: b
 }
 
 function ActionModal({ action, close }: { action: Action; close: () => void }) {
-  return <div className="modal-backdrop" onClick={close}><div className="action-modal" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={close}><X size={17} /></button><span className={`modal-icon ${action.status}`}>{action.status === "approved" ? <BadgeCheck size={27} /> : <Fingerprint size={27} />}</span><span className="modal-kicker">{action.status === "approved" ? "Execution receipt" : "Refusal proof"} #{action.id}</span><h2>{action.status === "approved" ? "Action executed" : "Action refused"}</h2><p>{action.reason}</p><dl><div><dt>Action</dt><dd>{action.name}</dd></div><div><dt>Asset</dt><dd>{action.asset}</dd></div><div><dt>Amount</dt><dd>{action.amount}</dd></div><div><dt>Covenant</dt><dd>#{action.covenantId ?? "0001"}</dd></div></dl><div className="modal-hash"><span>{action.onchain ? "Transaction hash" : "Demo action hash"}</span><code>{action.hash}</code></div>{action.onchain ? <a className="app-primary" href={`https://sepolia.arbiscan.io/tx/${action.hash}`} target="_blank" rel="noreferrer">View on Arbiscan <ArrowUpRight size={14} /></a> : <div className="simulation-note"><Terminal size={14} /><div><strong>Product preview</strong><span>Connect a wallet to submit a new on-chain action.</span></div></div>}</div></div>;
+  return <div className="modal-backdrop" onClick={close}><div className="action-modal" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={close}><X size={17} /></button><span className={`modal-icon ${action.status}`}>{action.status === "approved" ? <BadgeCheck size={27} /> : <Fingerprint size={27} />}</span><span className="modal-kicker">{action.status === "approved" ? "Execution receipt" : "Refusal proof"} #{action.id}</span><h2>{action.status === "approved" ? "Action executed" : "Action refused"}</h2><p>{action.reason}</p><dl><div><dt>Action</dt><dd>{action.name}</dd></div><div><dt>Asset</dt><dd>{action.asset}</dd></div><div><dt>Amount</dt><dd>{action.amount}</dd></div><div><dt>Covenant</dt><dd>#{action.covenantId ?? "0001"}</dd></div></dl><div className="modal-hash"><span>Transaction hash</span><code>{action.hash}</code></div><a className="app-primary" href={`https://sepolia.arbiscan.io/tx/${action.hash}`} target="_blank" rel="noreferrer">View on Arbiscan <ArrowUpRight size={14} /></a></div></div>;
 }
 
 function Toast({ action, close }: { action: Action; close: () => void }) {
