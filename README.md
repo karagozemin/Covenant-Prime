@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./public/covenant-prime-mark.png" alt="Covenant Prime logo" width="180" />
+  <img src="covenant-prime.png" alt="Covenant Prime logo" width="200" />
 </p>
 
 <h1 align="center">Covenant Prime</h1>
