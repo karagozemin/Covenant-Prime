@@ -40,8 +40,8 @@ The result is a trust layer for agentic finance: agents can act, but they cannot
 - Immutable refusal proofs indexed by covenant and agent.
 - Separate read-only policy engine and state-changing execution router.
 - Total and daily spend accounting enforced by the router.
-- Full test suite with 18 passing Foundry tests.
-- Polished judge-mode dashboard with deterministic action simulations.
+- Full test suite with 23 passing Foundry tests.
+- Live MetaMask transactions with receipt/refusal event parsing and chain-restored history.
 
 ## Key Phrase
 

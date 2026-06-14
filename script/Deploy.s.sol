@@ -28,6 +28,7 @@ contract Deploy is Script {
         AuditorDisclosureModule disclosure = new AuditorDisclosureModule(vault);
         vault.setRouter(address(router));
         registry.setRouter(address(router));
+        corporateActions.setRouter(address(router));
         vm.stopBroadcast();
 
         console2.log("CovenantVault", address(vault));

@@ -19,7 +19,6 @@ import {
   Menu,
   Orbit,
   Plus,
-  RefreshCw,
   ShieldCheck,
   Sparkles,
   Terminal,
@@ -28,8 +27,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { createPublicClient, createWalletClient, custom, encodeFunctionData, http, keccak256, numberToHex, toBytes } from "viem";
+import { useEffect, useMemo, useState } from "react";
+import { createPublicClient, createWalletClient, custom, decodeEventLog, encodeFunctionData, formatUnits, http, keccak256, numberToHex, toBytes } from "viem";
 import { arbitrumSepolia } from "viem/chains";
 
 declare global {
@@ -41,6 +40,21 @@ declare global {
 type ActionStatus = "approved" | "refused";
 type AppTab = "overview" | "console" | "proofs" | "covenant";
 type CovenantStage = "wallet" | "confirming" | "confirmed" | null;
+type CovenantConfig = {
+  owner: `0x${string}`;
+  agent: `0x${string}`;
+  maxTotalSpend: bigint;
+  maxSingleActionAmount: bigint;
+  dailyVolumeLimit: bigint;
+  expiry: bigint;
+  allowedAssets: readonly `0x${string}`[];
+  allowedTargets: readonly `0x${string}`[];
+  allowedRecipients: readonly `0x${string}`[];
+  allowCorporateActions: boolean;
+  allowDisclosure: boolean;
+  maxSlippageBps: number;
+  leverageAllowed: boolean;
+};
 
 type Action = {
   id: number;
@@ -53,10 +67,15 @@ type Action = {
   hash: string;
   onchain?: boolean;
   covenantId?: string;
+  timestamp?: number;
+  rawAmount?: bigint;
 };
 
 const makeHash = (seed: number) => `0x${(BigInt(seed) * 83911723n).toString(16).padEnd(64, "c").slice(0, 64)}`;
 const shortAddress = (address: string) => `${address.slice(0, 6)}...${address.slice(-4)}`;
+const formatUsdc = (amount: bigint) => `${Number(formatUnits(amount, 6)).toLocaleString("en-US", { maximumFractionDigits: 2 })} USDC`;
+const formatExpiry = (timestamp: bigint) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(Number(timestamp) * 1000));
+const actionTypeLabels = ["Buy", "Sell", "Transfer", "Vote", "Disclosure", "Repay", "Claim", "Rebalance"] as const;
 const errorMessage = (error: unknown) => {
   const providerError = error as { code?: number; message?: string; shortMessage?: string; details?: string; cause?: { code?: number; message?: string; details?: string } };
   const code = providerError?.cause?.code ?? providerError?.code;
@@ -68,18 +87,22 @@ const errorMessage = (error: unknown) => {
   return `${code ? `Wallet error ${code}: ` : ""}${message.split("\n")[0] || "The transaction could not be submitted."}`;
 };
 const contracts = {
-  vault: "0x3E176ABabbbfeE371821662d15Bbfe1F80d75aa1",
-  router: "0xBd5B908a4ea337906c21608CE98B9C90E6B7c329",
-  exchange: "0x2bAb2017CAC47929fdf70e9c9cA02A0A3eaf3E17",
-  corporateActions: "0x2e9a0D452842Be3300a14c5439c2A86a651dC0C9",
-  mAAPL: "0xb0BCB050B5557F8Db56B9C063dAC6b4DBB4eff8B",
-  mNVDA: "0x0885e072A83f3b5950E0430C25b3F395962Ac110",
-  mTSLA: "0xe6E61B5f19938e103269611313C64C58FFB68072",
+  vault: "0xD471827e261a63e9B08531C9a3bf15a61690A431",
+  router: "0x29197DcF648AbC3eFfD20197A5B73D5b4c6f1F47",
+  registry: "0xF1449335Cb6c1d6a841DB24B6c2959769D4B032a",
+  exchange: "0x03cF8805aAA99fd3Ed0eAedc9690657eE13549B0",
+  corporateActions: "0x6384Cdc7aD1154bB9B2Cbe1C0CAE4616c1A6f79f",
+  mAAPL: "0xDEB5290991A9a4347E8C6bF21e5495bdDC0E417b",
+  mNVDA: "0x794C52f93d94493C636836FD246e1D0E438833b0",
+  mTSLA: "0xF118900aaEa64Ab6e4E4976B96C25037e8D8bBB2",
 } as const;
+const deploymentBlock = 277147634n;
+const assetName = (asset: string) => {
+  const match = Object.entries({ mAAPL: contracts.mAAPL, mNVDA: contracts.mNVDA, mTSLA: contracts.mTSLA }).find(([, address]) => address.toLowerCase() === asset.toLowerCase());
+  return match?.[0] ?? shortAddress(asset);
+};
 const publicClient = createPublicClient({ chain: arbitrumSepolia, transport: http("https://sepolia-rollup.arbitrum.io/rpc") });
 const vaultAbi = [{
-  type: "function", name: "nextCovenantId", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }],
-}, {
   type: "function", name: "createCovenant", stateMutability: "nonpayable", inputs: [{ name: "config", type: "tuple", components: [
     { name: "owner", type: "address" }, { name: "agent", type: "address" }, { name: "maxTotalSpend", type: "uint256" },
     { name: "maxSingleActionAmount", type: "uint256" }, { name: "dailyVolumeLimit", type: "uint256" }, { name: "expiry", type: "uint64" },
@@ -87,6 +110,22 @@ const vaultAbi = [{
     { name: "allowCorporateActions", type: "bool" }, { name: "allowDisclosure", type: "bool" }, { name: "maxSlippageBps", type: "uint16" },
     { name: "leverageAllowed", type: "bool" },
   ] }], outputs: [{ type: "uint256" }],
+}, {
+  type: "function", name: "getCovenantsByOwner", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ type: "uint256[]" }],
+}, {
+  type: "function", name: "getCovenant", stateMutability: "view", inputs: [{ name: "covenantId", type: "uint256" }], outputs: [{ name: "config", type: "tuple", components: [
+    { name: "owner", type: "address" }, { name: "agent", type: "address" }, { name: "maxTotalSpend", type: "uint256" },
+    { name: "maxSingleActionAmount", type: "uint256" }, { name: "dailyVolumeLimit", type: "uint256" }, { name: "expiry", type: "uint64" },
+    { name: "allowedAssets", type: "address[]" }, { name: "allowedTargets", type: "address[]" }, { name: "allowedRecipients", type: "address[]" },
+    { name: "allowCorporateActions", type: "bool" }, { name: "allowDisclosure", type: "bool" }, { name: "maxSlippageBps", type: "uint16" },
+    { name: "leverageAllowed", type: "bool" },
+  ] }],
+}, {
+  type: "function", name: "revoked", stateMutability: "view", inputs: [{ name: "covenantId", type: "uint256" }], outputs: [{ type: "bool" }],
+}, {
+  type: "event", name: "CovenantCreated", inputs: [
+    { indexed: true, name: "covenantId", type: "uint256" }, { indexed: true, name: "user", type: "address" }, { indexed: true, name: "agent", type: "address" },
+  ],
 }, {
   type: "error", name: "InvalidConfig", inputs: [],
 }] as const;
@@ -97,7 +136,53 @@ const routerAbi = [{
     { name: "recipient", type: "address" }, { name: "slippageBps", type: "uint16" }, { name: "usesLeverage", type: "bool" },
     { name: "metadataHash", type: "bytes32" },
   ] }], outputs: [{ type: "bool" }, { type: "uint8" }, { type: "uint256" }],
+}, {
+  type: "function", name: "getReceiptsByCovenant", stateMutability: "view", inputs: [{ name: "covenantId", type: "uint256" }], outputs: [{ type: "uint256[]" }],
+}, {
+  type: "function", name: "receipts", stateMutability: "view", inputs: [{ name: "id", type: "uint256" }], outputs: [
+    { name: "receiptId", type: "uint256" }, { name: "covenantId", type: "uint256" }, { name: "actionHash", type: "bytes32" },
+    { name: "agent", type: "address" }, { name: "actionType", type: "uint8" }, { name: "amount", type: "uint256" }, { name: "timestamp", type: "uint64" },
+  ],
+}, {
+  type: "event", name: "ActionExecuted", inputs: [
+    { indexed: true, name: "receiptId", type: "uint256" }, { indexed: true, name: "covenantId", type: "uint256" }, { indexed: true, name: "actionHash", type: "bytes32" },
+  ],
+}, {
+  type: "event", name: "ActionRefused", inputs: [
+    { indexed: true, name: "covenantId", type: "uint256" }, { indexed: true, name: "actionHash", type: "bytes32" }, { indexed: false, name: "reasonCode", type: "uint8" },
+  ],
 }] as const;
+const registryAbi = [{
+  type: "function", name: "getProofsByCovenant", stateMutability: "view", inputs: [{ name: "covenantId", type: "uint256" }], outputs: [{ type: "uint256[]" }],
+}, {
+  type: "function", name: "getProof", stateMutability: "view", inputs: [{ name: "proofId", type: "uint256" }], outputs: [{ name: "proof", type: "tuple", components: [
+    { name: "proofId", type: "uint256" }, { name: "covenantId", type: "uint256" }, { name: "agent", type: "address" },
+    { name: "actionHash", type: "bytes32" }, { name: "reasonCode", type: "uint8" }, { name: "timestamp", type: "uint64" },
+    { name: "asset", type: "address" }, { name: "amount", type: "uint256" }, { name: "target", type: "address" }, { name: "metadataHash", type: "bytes32" },
+  ] }],
+}, {
+  type: "event", name: "RefusalProofRecorded", inputs: [
+    { indexed: true, name: "proofId", type: "uint256" }, { indexed: true, name: "covenantId", type: "uint256" },
+    { indexed: true, name: "agent", type: "address" }, { indexed: false, name: "reasonCode", type: "uint8" }, { indexed: false, name: "actionHash", type: "bytes32" },
+  ],
+}] as const;
+const reasonLabels = [
+  "All covenant checks passed",
+  "Covenant not found",
+  "Covenant revoked",
+  "Covenant expired",
+  "Unauthorized agent",
+  "Disallowed asset",
+  "Disallowed target",
+  "Exceeds single-action limit",
+  "Exceeds total spend",
+  "Exceeds daily volume",
+  "Slippage too high",
+  "Unauthorized recipient",
+  "Leverage not allowed",
+  "Corporate action not allowed",
+  "Disclosure not permitted",
+] as const;
 
 const transactionFees = async () => {
   const [block, estimated] = await Promise.all([
@@ -112,15 +197,8 @@ const transactionFees = async () => {
   };
 };
 
-const seedActions: Action[] = [
-  { id: 2288, name: "Buy mNVDA", description: "Increase semiconductor exposure", asset: "mNVDA", amount: "200 USDC", status: "approved", reason: "All covenant checks passed", hash: "0x2b278b8be87fbed7416b4c8bb850bbcd30a2e177a51ca0296a587dd0990e20f1", onchain: true },
-  { id: 2287, name: "Transfer USDC", description: "Send funds to unknown wallet", asset: "USDC", amount: "450 USDC", status: "refused", reason: "Unauthorized recipient", hash: "0xff68df238373c5e6eef53a1cb97edd9df7877c11dab08323ab8731bce9072a17", onchain: true },
-  { id: 2286, name: "Buy mNVDA", description: "Order exceeds single-action limit", asset: "mNVDA", amount: "900 USDC", status: "refused", reason: "Exceeds single-action limit", hash: "0x6bac976bc2139d48904b2d374bbc51a0f58b6826c9c31b76f97e96244d2453a9", onchain: true },
-];
-
 const scenarios = [
   { name: "Buy mNVDA", description: "Buy 200 USDC of mNVDA", asset: "mNVDA", amount: "200 USDC", status: "approved" as const, reason: "All covenant checks passed", icon: CircleDollarSign },
-  { name: "Rebalance", description: "Rotate mAAPL into mTSLA", asset: "mAAPL → mTSLA", amount: "180 USDC", status: "approved" as const, reason: "All covenant checks passed", icon: RefreshCw },
   { name: "Vote", description: "Vote on issuer proposal #14", asset: "mAAPL", amount: "No spend", status: "approved" as const, reason: "Corporate actions permitted", icon: Vote },
   { name: "Exceed cap", description: "Try to buy 900 USDC of mNVDA", asset: "mNVDA", amount: "900 USDC", status: "refused" as const, reason: "Exceeds single-action limit", icon: Zap },
   { name: "Unknown wallet", description: "Transfer to unapproved recipient", asset: "USDC", amount: "450 USDC", status: "refused" as const, reason: "Unauthorized recipient", icon: Wallet },
@@ -130,17 +208,112 @@ const scenarios = [
 export default function Home() {
   const [appOpen, setAppOpen] = useState(false);
   const [tab, setTab] = useState<AppTab>("overview");
-  const [actions, setActions] = useState<Action[]>(seedActions);
+  const [actions, setActions] = useState<Action[]>([]);
   const [selected, setSelected] = useState<Action | null>(null);
   const [toast, setToast] = useState<Action | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
   const [account, setAccount] = useState<`0x${string}` | null>(null);
   const [activeCovenantId, setActiveCovenantId] = useState<bigint | null>(null);
+  const [activeConfig, setActiveConfig] = useState<CovenantConfig | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [covenantStage, setCovenantStage] = useState<CovenantStage>(null);
   const [pendingCovenantHash, setPendingCovenantHash] = useState<`0x${string}` | null>(null);
 
   const proofs = useMemo(() => actions.filter((action) => action.status === "refused"), [actions]);
+  const loadCovenantActivity = async (covenantId: bigint) => {
+    const [receiptIds, proofIds, executionLogs, proofLogs] = await Promise.all([
+      publicClient.readContract({ address: contracts.router, abi: routerAbi, functionName: "getReceiptsByCovenant", args: [covenantId] }),
+      publicClient.readContract({ address: contracts.registry, abi: registryAbi, functionName: "getProofsByCovenant", args: [covenantId] }),
+      publicClient.getContractEvents({ address: contracts.router, abi: routerAbi, eventName: "ActionExecuted", args: { covenantId }, fromBlock: deploymentBlock }),
+      publicClient.getContractEvents({ address: contracts.registry, abi: registryAbi, eventName: "RefusalProofRecorded", args: { covenantId }, fromBlock: deploymentBlock }),
+    ]);
+    const [receipts, savedProofs] = await Promise.all([
+      Promise.all(receiptIds.map((id) => publicClient.readContract({ address: contracts.router, abi: routerAbi, functionName: "receipts", args: [id] }))),
+      Promise.all(proofIds.map((id) => publicClient.readContract({ address: contracts.registry, abi: registryAbi, functionName: "getProof", args: [id] }))),
+    ]);
+    const receiptHashes = new Map(executionLogs.map((log) => [String(log.args.receiptId), log.transactionHash]));
+    const proofHashes = new Map(proofLogs.map((log) => [String(log.args.proofId), log.transactionHash]));
+    const receiptActions: Action[] = receipts.map((receipt) => ({
+      id: Number(receipt[0]),
+      name: actionTypeLabels[Number(receipt[4])] ?? "Executed action",
+      description: "Validated and settled through ActionRouter",
+      asset: "On-chain target",
+      amount: formatUsdc(receipt[5]),
+      status: "approved",
+      reason: reasonLabels[0],
+      hash: receiptHashes.get(String(receipt[0])) ?? receipt[2],
+      onchain: true,
+      covenantId: String(receipt[1]),
+      timestamp: Number(receipt[6]),
+      rawAmount: receipt[5],
+    }));
+    const refusalActions: Action[] = savedProofs.map((proof) => ({
+      id: Number(proof.proofId),
+      name: "Refused action",
+      description: reasonLabels[Number(proof.reasonCode)] ?? `Reason code ${proof.reasonCode}`,
+      asset: assetName(proof.asset),
+      amount: formatUsdc(proof.amount),
+      status: "refused",
+      reason: reasonLabels[Number(proof.reasonCode)] ?? `Reason code ${proof.reasonCode}`,
+      hash: proofHashes.get(String(proof.proofId)) ?? proof.actionHash,
+      onchain: true,
+      covenantId: String(proof.covenantId),
+      timestamp: Number(proof.timestamp),
+      rawAmount: proof.amount,
+    }));
+    setActions([...receiptActions, ...refusalActions].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)));
+  };
+
+  const loadLatestCovenant = async (address: `0x${string}`) => {
+    const [ids, latestBlock] = await Promise.all([
+      publicClient.readContract({ address: contracts.vault, abi: vaultAbi, functionName: "getCovenantsByOwner", args: [address] }),
+      publicClient.getBlock(),
+    ]);
+    for (let index = ids.length - 1; index >= 0; index--) {
+      const id = ids[index];
+      const [config, isRevoked] = await Promise.all([
+        publicClient.readContract({ address: contracts.vault, abi: vaultAbi, functionName: "getCovenant", args: [id] }),
+        publicClient.readContract({ address: contracts.vault, abi: vaultAbi, functionName: "revoked", args: [id] }),
+      ]);
+      if (!isRevoked && config.expiry >= latestBlock.timestamp) {
+        setActiveCovenantId(id);
+        setActiveConfig(config as CovenantConfig);
+        await loadCovenantActivity(id);
+        return;
+      }
+    }
+    setActiveCovenantId(null);
+    setActiveConfig(null);
+    setActions([]);
+  };
+
+  useEffect(() => {
+    const provider = window.ethereum as (NonNullable<typeof window.ethereum> & {
+      on?: (event: string, listener: (...args: unknown[]) => void) => void;
+      removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
+    }) | undefined;
+    if (!provider) return;
+    const syncAccounts = async (accounts?: unknown) => {
+      const addresses = (accounts ?? await provider.request({ method: "eth_accounts" })) as `0x${string}`[];
+      const address = addresses[0] ?? null;
+      setAccount(address);
+      if (address) await loadLatestCovenant(address);
+      else {
+        setActiveCovenantId(null);
+        setActiveConfig(null);
+      }
+    };
+    const handleAccounts = (...args: unknown[]) => void syncAccounts(args[0]).catch((error) => setWalletError(errorMessage(error)));
+    const handleChain = () => void syncAccounts().catch((error) => setWalletError(errorMessage(error)));
+    void syncAccounts().catch((error) => setWalletError(errorMessage(error)));
+    provider.on?.("accountsChanged", handleAccounts);
+    provider.on?.("chainChanged", handleChain);
+    return () => {
+      provider.removeListener?.("accountsChanged", handleAccounts);
+      provider.removeListener?.("chainChanged", handleChain);
+    };
+  }, []);
+
   const openProduct = () => {
     setAppOpen(true);
     setTab(activeCovenantId ? "overview" : "covenant");
@@ -157,6 +330,7 @@ export default function Home() {
     const wallet = createWalletClient({ chain: arbitrumSepolia, transport: custom(window.ethereum) });
     const [address] = await wallet.requestAddresses();
     setAccount(address);
+    await loadLatestCovenant(address);
     return { wallet, address };
   };
 
@@ -175,10 +349,7 @@ export default function Home() {
       const wallet = createWalletClient({ chain: arbitrumSepolia, transport: custom(provider) });
       const [address] = await wallet.requestAddresses();
       setAccount(address);
-      const [covenantId, latestBlock] = await Promise.all([
-        publicClient.readContract({ address: contracts.vault, abi: vaultAbi, functionName: "nextCovenantId" }),
-        publicClient.getBlock(),
-      ]);
+      const latestBlock = await publicClient.getBlock();
       const config = {
         owner: address,
         agent: address,
@@ -215,7 +386,13 @@ export default function Home() {
       setCovenantStage("confirming");
       const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 2 });
       if (receipt.status !== "success") throw new Error("Covenant transaction reverted on-chain.");
+      const createdLog = receipt.logs.find((log) => log.address.toLowerCase() === contracts.vault.toLowerCase() && log.topics.length === 4);
+      if (!createdLog) throw new Error("CovenantCreated event was not found in the transaction receipt.");
+      const created = decodeEventLog({ abi: vaultAbi, data: createdLog.data, topics: createdLog.topics, eventName: "CovenantCreated" });
+      const covenantId = created.args.covenantId;
       setActiveCovenantId(covenantId);
+      setActiveConfig(config as CovenantConfig);
+      setActions([]);
       setCovenantStage("confirmed");
       setToast({ id: Number(covenantId), name: "Covenant created", description: "Your wallet owns and operates this mandate", asset: "M-" + covenantId, amount: "7 days", status: "approved", reason: "User-signed covenant is enforced", hash, onchain: true, covenantId: String(covenantId) });
       await new Promise((resolve) => window.setTimeout(resolve, 1600));
@@ -243,14 +420,17 @@ export default function Home() {
     try {
       const provider = window.ethereum;
       if (!provider) throw new Error("Install MetaMask to continue.");
+      const chainId = await provider.request({ method: "eth_chainId" }) as string;
+      if (chainId.toLowerCase() !== "0x66eee") {
+        await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x66eee" }] });
+      }
       const isVote = scenario.name === "Vote";
-      const isRebalance = scenario.name === "Rebalance";
       const isDisclosure = scenario.name === "Private disclosure";
       const isTransfer = scenario.name === "Unknown wallet";
-      const amount = scenario.name === "Exceed cap" ? 900_000_000n : scenario.name === "Buy mNVDA" ? 200_000_000n : isRebalance ? 180_000_000n : isTransfer ? 450_000_000n : 0n;
+      const amount = scenario.name === "Exceed cap" ? 900_000_000n : scenario.name === "Buy mNVDA" ? 200_000_000n : isTransfer ? 450_000_000n : 0n;
       const request = {
-        covenantId: activeCovenantId, agent: account, actionType: isVote ? 3 : isDisclosure ? 4 : isTransfer ? 2 : isRebalance ? 7 : 0,
-        asset: isRebalance ? contracts.mAAPL : contracts.mNVDA, target: isVote || isDisclosure || isRebalance ? contracts.corporateActions : contracts.exchange,
+        covenantId: activeCovenantId, agent: account, actionType: isVote ? 3 : isDisclosure ? 4 : isTransfer ? 2 : 0,
+        asset: isVote ? contracts.mAAPL : contracts.mNVDA, target: isVote || isDisclosure ? contracts.corporateActions : contracts.exchange,
         amount, recipient: isTransfer ? "0x000000000000000000000000000000000000dEaD" : account, slippageBps: 50, usesLeverage: false,
         metadataHash: keccak256(toBytes(`COVENANT_PRIME_${scenario.name}_${Date.now()}`)),
       } as const;
@@ -273,8 +453,37 @@ export default function Home() {
       }) as `0x${string}`;
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") throw new Error("Agent action transaction reverted on-chain.");
-      const id = 2289 + actions.length;
-      const action: Action = { ...scenario, id, hash, onchain: true, covenantId: String(activeCovenantId) };
+      let status: ActionStatus | null = null;
+      let reason = "";
+      let recordId = 2289 + actions.length;
+      for (const log of receipt.logs) {
+        if (log.address.toLowerCase() === contracts.registry.toLowerCase()) {
+          try {
+            const event = decodeEventLog({ abi: registryAbi, data: log.data, topics: log.topics, eventName: "RefusalProofRecorded" });
+            recordId = Number(event.args.proofId);
+          } catch {
+            // Ignore unrelated registry logs.
+          }
+          continue;
+        }
+        if (log.address.toLowerCase() !== contracts.router.toLowerCase()) continue;
+        try {
+          const event = decodeEventLog({ abi: routerAbi, data: log.data, topics: log.topics });
+          if (event.eventName === "ActionExecuted") {
+            status = "approved";
+            reason = reasonLabels[0];
+            recordId = Number(event.args.receiptId);
+          }
+          if (event.eventName === "ActionRefused") {
+            status = "refused";
+            reason = reasonLabels[Number(event.args.reasonCode)] ?? `Reason code ${event.args.reasonCode}`;
+          }
+        } catch {
+          // Ignore unrelated router logs.
+        }
+      }
+      if (!status) throw new Error("The ActionRouter decision event was not found in the transaction receipt.");
+      const action: Action = { ...scenario, id: recordId, status, reason, hash, onchain: true, covenantId: String(activeCovenantId), rawAmount: amount, timestamp: Math.floor(Date.now() / 1000) };
       setActions((current) => [action, ...current]);
       setToast(action);
       if (action.status === "refused") setSelected(action);
@@ -287,7 +496,7 @@ export default function Home() {
   };
 
   if (appOpen) {
-    return <ProductApp tab={tab} setTab={setTab} actions={actions} proofs={proofs} runScenario={runScenario} selected={selected} setSelected={setSelected} closeApp={() => setAppOpen(false)} toast={toast} closeToast={() => setToast(null)} processing={processing} account={account} connectWallet={connectWallet} activeCovenantId={activeCovenantId} createCovenant={createCovenant} walletError={walletError} clearWalletError={() => setWalletError(null)} covenantStage={covenantStage} pendingCovenantHash={pendingCovenantHash} />;
+    return <ProductApp tab={tab} setTab={setTab} actions={actions} proofs={proofs} runScenario={runScenario} selected={selected} setSelected={setSelected} closeApp={() => setAppOpen(false)} toast={toast} closeToast={() => setToast(null)} processing={processing} account={account} connectWallet={connectWallet} activeCovenantId={activeCovenantId} activeConfig={activeConfig} createCovenant={createCovenant} walletError={walletError} clearWalletError={() => setWalletError(null)} covenantStage={covenantStage} pendingCovenantHash={pendingCovenantHash} />;
   }
 
   return <Landing openApp={openProduct} runScenario={runScenario} toast={toast} closeToast={() => setToast(null)} processing={processing} />;
@@ -385,16 +594,16 @@ function Life({ number, title, copy }: { number: string; title: string; copy: st
   return <div className="life"><span>{number}</span><h3>{title}</h3><p>{copy}</p><ArrowUpRight size={15} /></div>;
 }
 
-function ProductApp({ tab, setTab, actions, proofs, runScenario, selected, setSelected, closeApp, toast, closeToast, processing, account, connectWallet, activeCovenantId, createCovenant, walletError, clearWalletError, covenantStage, pendingCovenantHash }: { tab: AppTab; setTab: (tab: AppTab) => void; actions: Action[]; proofs: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => Promise<void>; selected: Action | null; setSelected: (action: Action | null) => void; closeApp: () => void; toast: Action | null; closeToast: () => void; processing: string | null; account: `0x${string}` | null; connectWallet: () => Promise<unknown>; activeCovenantId: bigint | null; createCovenant: () => Promise<void>; walletError: string | null; clearWalletError: () => void; covenantStage: CovenantStage; pendingCovenantHash: `0x${string}` | null }) {
+function ProductApp({ tab, setTab, actions, proofs, runScenario, selected, setSelected, closeApp, toast, closeToast, processing, account, connectWallet, activeCovenantId, activeConfig, createCovenant, walletError, clearWalletError, covenantStage, pendingCovenantHash }: { tab: AppTab; setTab: (tab: AppTab) => void; actions: Action[]; proofs: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => Promise<void>; selected: Action | null; setSelected: (action: Action | null) => void; closeApp: () => void; toast: Action | null; closeToast: () => void; processing: string | null; account: `0x${string}` | null; connectWallet: () => Promise<unknown>; activeCovenantId: bigint | null; activeConfig: CovenantConfig | null; createCovenant: () => Promise<void>; walletError: string | null; clearWalletError: () => void; covenantStage: CovenantStage; pendingCovenantHash: `0x${string}` | null }) {
   return (
     <main className="app">
       <header className="app-header"><button onClick={closeApp}><Logo /></button><nav>{(["overview", "console", "proofs", "covenant"] as AppTab[]).map((item) => <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item === "console" ? "Agent console" : item}{item === "proofs" && <b>{proofs.length}</b>}</button>)}</nav><div><span className="network"><i /> Arbitrum Sepolia</span><button className={`wallet-button ${account ? "connected" : ""}`} onClick={() => void connectWallet().catch(() => undefined)}><Wallet size={15} /> {account ? shortAddress(account) : "Connect wallet"} <ChevronDown size={13} /></button></div></header>
       {walletError && <div className="wallet-error"><span>{walletError}</span><button onClick={clearWalletError}><X size={14} /></button></div>}
       <div key={tab} className="view-transition">
-        {tab === "overview" && <AppOverview actions={actions} proofs={proofs} setTab={setTab} select={setSelected} />}
+        {tab === "overview" && <AppOverview actions={actions} proofs={proofs} setTab={setTab} select={setSelected} covenantId={activeCovenantId} config={activeConfig} />}
         {tab === "console" && <AgentConsole actions={actions} runScenario={runScenario} select={setSelected} processing={processing} ready={Boolean(account && activeCovenantId)} openCovenant={() => setTab("covenant")} />}
         {tab === "proofs" && <ProofDashboard proofs={proofs} select={setSelected} />}
-        {tab === "covenant" && <Covenant account={account} activeCovenantId={activeCovenantId} createCovenant={createCovenant} processing={processing} stage={covenantStage} pendingHash={pendingCovenantHash} />}
+        {tab === "covenant" && <Covenant account={account} activeCovenantId={activeCovenantId} config={activeConfig} createCovenant={createCovenant} processing={processing} stage={covenantStage} pendingHash={pendingCovenantHash} />}
       </div>
       {selected && <ActionModal action={selected} close={() => setSelected(null)} />}
       {toast && <Toast action={toast} close={closeToast} />}
@@ -406,8 +615,9 @@ function AppTitle({ eyebrow, title, copy, action }: { eyebrow: string; title: st
   return <div className="app-title"><div><span>{eyebrow}</span><h1>{title}</h1><p>{copy}</p></div>{action}</div>;
 }
 
-function AppOverview({ actions, proofs, setTab, select }: { actions: Action[]; proofs: Action[]; setTab: (tab: AppTab) => void; select: (action: Action) => void }) {
-  return <div className="app-content"><AppTitle eyebrow="Covenant #0001 · Enforced" title="Control center" copy="Every agent instruction is validated before execution." action={<button className="app-primary" onClick={() => setTab("console")}><Zap size={16} /> Run live demo</button>} /><div className="app-metrics"><AppMetric label="Protected value" value="$2.84M" note="Across 3 tokenized assets" /><AppMetric label="Executed actions" value={String(actions.filter((a) => a.status === "approved").length + 1244)} note="100% within covenant" /><AppMetric label="Refusal proofs" value={String(proofs.length + 285)} note="Unsafe actions blocked" danger /><AppMetric label="Validation time" value="42ms" note="Median on-chain decision" /></div><div className="app-grid"><section className="app-panel activity-panel"><PanelTitle title="Recent agent activity" action={<button onClick={() => setTab("console")}>Open console <ArrowRight size={13} /></button>} /><ActionList actions={actions.slice(0, 5)} select={select} /></section><CovenantCard setTab={setTab} /></div></div>;
+function AppOverview({ actions, proofs, setTab, select, covenantId, config }: { actions: Action[]; proofs: Action[]; setTab: (tab: AppTab) => void; select: (action: Action) => void; covenantId: bigint | null; config: CovenantConfig | null }) {
+  const executed = actions.filter((action) => action.status === "approved");
+  return <div className="app-content"><AppTitle eyebrow={covenantId ? `Covenant #${covenantId} · Enforced` : "No active covenant"} title="Control center" copy="Every agent instruction is validated before execution." action={<button className="app-primary" onClick={() => setTab(covenantId ? "console" : "covenant")}><Zap size={16} /> {covenantId ? "Run live action" : "Create covenant"}</button>} /><div className="app-metrics"><AppMetric label="Mandate limit" value={config ? formatUsdc(config.maxTotalSpend) : "Not configured"} note={config ? `Across ${config.allowedAssets.length} allowed assets` : "Create a covenant to begin"} /><AppMetric label="Executed actions" value={String(executed.length)} note="Validated on-chain" /><AppMetric label="Refusal proofs" value={String(proofs.length)} note="Unsafe actions blocked" danger /><AppMetric label="Network" value="Arbitrum" note="Sepolia testnet" /></div><div className="app-grid"><section className="app-panel activity-panel"><PanelTitle title="Recent agent activity" action={<button onClick={() => setTab("console")}>Open console <ArrowRight size={13} /></button>} /><ActionList actions={actions.slice(0, 5)} select={select} /></section><CovenantCard setTab={setTab} config={config} actions={actions} /></div></div>;
 }
 
 function AppMetric({ label, value, note, danger }: { label: string; value: string; note: string; danger?: boolean }) {
@@ -419,11 +629,14 @@ function PanelTitle({ title, action }: { title: string; action?: React.ReactNode
 }
 
 function ActionList({ actions, select }: { actions: Action[]; select: (action: Action) => void }) {
-  return <div className="action-list">{actions.map((action) => <button key={`${action.id}-${action.name}`} onClick={() => select(action)}><span className={`action-status ${action.status}`}>{action.status === "approved" ? <Check size={15} /> : <X size={15} />}</span><div><strong>{action.name}</strong><small>{action.description}</small></div><span className="action-amount">{action.amount}</span><span className={`status-pill ${action.status}`}>{action.status}</span><ArrowRight size={14} /></button>)}</div>;
+  return <div className="action-list">{actions.length === 0 && <div className="empty-state">No on-chain activity yet.</div>}{actions.map((action) => <button key={`${action.id}-${action.name}-${action.status}`} onClick={() => select(action)}><span className={`action-status ${action.status}`}>{action.status === "approved" ? <Check size={15} /> : <X size={15} />}</span><div><strong>{action.name}</strong><small>{action.description}</small></div><span className="action-amount">{action.amount}</span><span className={`status-pill ${action.status}`}>{action.status}</span><ArrowRight size={14} /></button>)}</div>;
 }
 
-function CovenantCard({ setTab }: { setTab: (tab: AppTab) => void }) {
-  return <section className="app-panel covenant-card"><PanelTitle title="Active covenant" action={<span className="enforced"><i /> Enforced</span>} /><div className="covenant-number"><span>Total authority</span><strong>$10,000</strong><div><span style={{ width: "34%" }} /></div><small>$3,400 used · $6,600 available</small></div><dl><div><dt>Single action</dt><dd>$500 max</dd></div><div><dt>Daily volume</dt><dd>$2,500 max</dd></div><div><dt>Slippage</dt><dd>1.00% max</dd></div><div><dt>Leverage</dt><dd>Blocked</dd></div></dl><div className="asset-pills"><span>mAAPL</span><span>mNVDA</span><span>mTSLA</span></div><button className="app-secondary" onClick={() => setTab("covenant")}>View covenant <ArrowUpRight size={13} /></button></section>;
+function CovenantCard({ setTab, config, actions }: { setTab: (tab: AppTab) => void; config: CovenantConfig | null; actions: Action[] }) {
+  const spent = actions.filter((action) => action.status === "approved").reduce((total, action) => total + (action.rawAmount ?? 0n), 0n);
+  const available = config ? (config.maxTotalSpend > spent ? config.maxTotalSpend - spent : 0n) : 0n;
+  const progress = config && config.maxTotalSpend > 0n ? Math.min(100, Number((spent * 100n) / config.maxTotalSpend)) : 0;
+  return <section className="app-panel covenant-card"><PanelTitle title="Active covenant" action={<span className="enforced"><i /> {config ? "Enforced" : "Not configured"}</span>} /><div className="covenant-number"><span>Total authority</span><strong>{config ? formatUsdc(config.maxTotalSpend) : "No mandate"}</strong><div><span style={{ width: `${progress}%` }} /></div><small>{config ? `${formatUsdc(spent)} used · ${formatUsdc(available)} available` : "Create an on-chain covenant to begin"}</small></div><dl><div><dt>Single action</dt><dd>{config ? `${formatUsdc(config.maxSingleActionAmount)} max` : "—"}</dd></div><div><dt>Daily volume</dt><dd>{config ? `${formatUsdc(config.dailyVolumeLimit)} max` : "—"}</dd></div><div><dt>Slippage</dt><dd>{config ? `${(config.maxSlippageBps / 100).toFixed(2)}% max` : "—"}</dd></div><div><dt>Leverage</dt><dd>{config?.leverageAllowed ? "Allowed" : "Blocked"}</dd></div></dl><div className="asset-pills">{config?.allowedAssets.map((asset) => <span key={asset}>{assetName(asset)}</span>)}</div><button className="app-secondary" onClick={() => setTab("covenant")}>View covenant <ArrowUpRight size={13} /></button></section>;
 }
 
 function AgentConsole({ actions, runScenario, select, processing, ready, openCovenant }: { actions: Action[]; runScenario: (scenario: (typeof scenarios)[number]) => Promise<void>; select: (action: Action) => void; processing: string | null; ready: boolean; openCovenant: () => void }) {
@@ -431,13 +644,13 @@ function AgentConsole({ actions, runScenario, select, processing, ready, openCov
 }
 
 function ProofDashboard({ proofs, select }: { proofs: Action[]; select: (action: Action) => void }) {
-  return <div className="app-content"><AppTitle eyebrow="Verifiable safety record" title="Refusal proofs" copy="On-chain evidence that unsafe agent actions were blocked before settlement." /><div className="proof-banner"><Fingerprint size={25} /><div><strong>Unsafe actions should leave evidence.</strong><p>Every refusal records the attempted action, violated rule, agent, amount, and action hash.</p></div><span>{proofs.length + 285}<small>Total proofs</small></span></div><section className="app-panel"><PanelTitle title="Proof registry" /><ActionList actions={proofs} select={select} /></section></div>;
+  return <div className="app-content"><AppTitle eyebrow="Verifiable safety record" title="Refusal proofs" copy="On-chain evidence that unsafe agent actions were blocked before settlement." /><div className="proof-banner"><Fingerprint size={25} /><div><strong>Unsafe actions should leave evidence.</strong><p>Every refusal records the attempted action, violated rule, agent, amount, and action hash.</p></div><span>{proofs.length}<small>Total proofs</small></span></div><section className="app-panel"><PanelTitle title="Proof registry" /><ActionList actions={proofs} select={select} /></section></div>;
 }
 
-function Covenant({ account, activeCovenantId, createCovenant, processing, stage, pendingHash }: { account: `0x${string}` | null; activeCovenantId: bigint | null; createCovenant: () => Promise<void>; processing: string | null; stage: CovenantStage; pendingHash: `0x${string}` | null }) {
+function Covenant({ account, activeCovenantId, config, createCovenant, processing, stage, pendingHash }: { account: `0x${string}` | null; activeCovenantId: bigint | null; config: CovenantConfig | null; createCovenant: () => Promise<void>; processing: string | null; stage: CovenantStage; pendingHash: `0x${string}` | null }) {
   const active = activeCovenantId !== null;
   const buttonLabel = stage === "wallet" ? "Confirm in MetaMask…" : stage === "confirming" ? "Confirming on-chain…" : stage === "confirmed" ? "Covenant enforced" : active ? "Covenant enforced" : account ? "Sign & create covenant" : "Connect & create";
-  return <div className="app-content"><AppTitle eyebrow={active ? "On-chain policy" : "Start here"} title={active ? `Covenant #${activeCovenantId}` : "Create your covenant"} copy={active ? "This boundary is enforced by the Mandate Engine on Arbitrum Sepolia." : "Connect your wallet and sign the transaction to become the on-chain owner and assigned agent."} action={<button disabled={active || Boolean(processing)} className="app-primary" onClick={() => void createCovenant()}>{stage === "confirmed" ? <BadgeCheck size={15} /> : stage ? <Clock3 size={15} /> : <Plus size={15} />} {buttonLabel}</button>} /><div className="product-flow"><span className={account ? "done" : "current"}><b>01</b> Connect wallet</span><i /><span className={active ? "done" : account ? "current" : ""}><b>02</b> Sign & create</span><i /><span className={active ? "current" : ""}><b>03</b> Use Agent Console</span></div>{stage && <div className={`covenant-progress ${stage}`}><span>{stage === "confirmed" ? <BadgeCheck size={22} /> : <Clock3 size={22} />}</span><div><strong>{stage === "wallet" ? "Waiting for your signature" : stage === "confirming" ? "Creating your covenant on-chain" : "Covenant enforced successfully"}</strong><small>{stage === "wallet" ? "Confirm the transaction in MetaMask to continue." : stage === "confirming" ? "Transaction submitted. Waiting for Arbitrum Sepolia confirmations before opening Agent Console." : "Everything is ready. Opening Agent Console…"}</small>{pendingHash && <a href={`https://sepolia.arbiscan.io/tx/${pendingHash}`} target="_blank" rel="noreferrer">View transaction <ArrowUpRight size={12} /></a>}</div><i /></div>}<div className="policy-layout"><section className="app-panel policy"><PanelTitle title="Agent authority" /><Policy label="Owner & assigned agent" value={account ? shortAddress(account) : "Connect wallet"} /><Policy label="Maximum total spend" value="10,000 USDC" /><Policy label="Maximum single action" value="500 USDC" /><Policy label="Daily volume limit" value="2,500 USDC" /><Policy label="Maximum slippage" value="1.00%" /></section><section className="app-panel policy"><PanelTitle title="Lifecycle permissions" /><Policy label="Corporate actions" value="Allowed" good /><Policy label="Auditor disclosure" value="Blocked" /><Policy label="Leverage" value="Blocked" /><Policy label="Mandate expiry" value="7 days after creation" /><Policy label="Status" value={active ? "Enforced" : stage === "confirming" ? "Confirming" : "Draft"} good={active} /></section></div></div>;
+  return <div className="app-content"><AppTitle eyebrow={active ? "On-chain policy" : "Start here"} title={active ? `Covenant #${activeCovenantId}` : "Create your covenant"} copy={active ? "This boundary is enforced by the Mandate Engine on Arbitrum Sepolia." : "Connect your wallet and sign the transaction to become the on-chain owner and assigned agent."} action={<button disabled={active || Boolean(processing)} className="app-primary" onClick={() => void createCovenant()}>{stage === "confirmed" ? <BadgeCheck size={15} /> : stage ? <Clock3 size={15} /> : <Plus size={15} />} {buttonLabel}</button>} /><div className="product-flow"><span className={account ? "done" : "current"}><b>01</b> Connect wallet</span><i /><span className={active ? "done" : account ? "current" : ""}><b>02</b> Sign & create</span><i /><span className={active ? "current" : ""}><b>03</b> Use Agent Console</span></div>{stage && <div className={`covenant-progress ${stage}`}><span>{stage === "confirmed" ? <BadgeCheck size={22} /> : <Clock3 size={22} />}</span><div><strong>{stage === "wallet" ? "Waiting for your signature" : stage === "confirming" ? "Creating your covenant on-chain" : "Covenant enforced successfully"}</strong><small>{stage === "wallet" ? "Confirm the transaction in MetaMask to continue." : stage === "confirming" ? "Transaction submitted. Waiting for Arbitrum Sepolia confirmations before opening Agent Console." : "Everything is ready. Opening Agent Console…"}</small>{pendingHash && <a href={`https://sepolia.arbiscan.io/tx/${pendingHash}`} target="_blank" rel="noreferrer">View transaction <ArrowUpRight size={12} /></a>}</div><i /></div>}<div className="policy-layout"><section className="app-panel policy"><PanelTitle title="Agent authority" /><Policy label="Owner" value={config ? shortAddress(config.owner) : account ? shortAddress(account) : "Connect wallet"} /><Policy label="Assigned agent" value={config ? shortAddress(config.agent) : account ? shortAddress(account) : "Connect wallet"} /><Policy label="Maximum total spend" value={config ? formatUsdc(config.maxTotalSpend) : "10,000 USDC"} /><Policy label="Maximum single action" value={config ? formatUsdc(config.maxSingleActionAmount) : "500 USDC"} /><Policy label="Daily volume limit" value={config ? formatUsdc(config.dailyVolumeLimit) : "2,500 USDC"} /><Policy label="Maximum slippage" value={config ? `${(config.maxSlippageBps / 100).toFixed(2)}%` : "1.00%"} /></section><section className="app-panel policy"><PanelTitle title="Lifecycle permissions" /><Policy label="Corporate actions" value={config?.allowCorporateActions === false ? "Blocked" : "Allowed"} good={config?.allowCorporateActions !== false} /><Policy label="Auditor disclosure" value={config?.allowDisclosure ? "Allowed" : "Blocked"} good={config?.allowDisclosure} /><Policy label="Leverage" value={config?.leverageAllowed ? "Allowed" : "Blocked"} good={config?.leverageAllowed} /><Policy label="Mandate expiry" value={config ? formatExpiry(config.expiry) : "7 days after creation"} /><Policy label="Status" value={active ? "Enforced" : stage === "confirming" ? "Confirming" : "Draft"} good={active} /></section></div></div>;
 }
 
 function Policy({ label, value, good }: { label: string; value: string; good?: boolean }) {

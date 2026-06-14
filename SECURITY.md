@@ -21,13 +21,17 @@ Covenant Prime is a hackathon proof of concept.
 - Leverage, corporate action, and disclosure permissions are explicit.
 - Only `ActionRouter` can update spend accounting.
 - Only `ActionRouter` can write refusal proofs.
+- Vault and router state-changing execution paths include emergency pause controls.
+- Token custody and router execution paths include reentrancy protection.
+- Successful receipts and refusal proofs are indexed by covenant for deterministic recovery.
+- Lifecycle calls use a narrow typed target interface and preserve the covenant ID.
+- Unsupported lifecycle action types revert instead of producing false execution receipts.
 - Auditor access is owner-controlled when disclosure is not globally enabled.
 
 ## Known Limitations
 
 - Approved target contracts are trusted once allowlisted.
-- `ActionRouter` uses a generic lifecycle target call for non-trade actions.
-- No reentrancy guard, pause system, multisig administration, or timelock.
+- Administration is still a single deployer key; there is no multisig or timelock.
 - No oracle validation or market-price protection beyond supplied slippage data.
 - No EIP-712 action signatures, nonce, replay protection, or relayer design.
 - No fee accounting, position accounting, settlement finality, or cross-chain proof bridge.
@@ -39,7 +43,7 @@ Covenant Prime is a hackathon proof of concept.
 A production release would require:
 
 1. Independent audits and formal verification of policy invariants.
-2. Reentrancy protection, emergency pause, multisig, timelock, and carefully designed upgradeability.
+2. Multisig, timelock, monitored emergency procedures, and a carefully designed upgrade strategy.
 3. EIP-712 signed intents with nonces, deadlines, replay protection, and session-key controls.
 4. Trusted oracle integration and manipulation-resistant valuation.
 5. Position-aware accounting and conservative settlement handling.

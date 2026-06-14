@@ -33,6 +33,7 @@ contract RefusalProofRegistry {
     );
 
     error Unauthorized();
+    error InvalidConfig();
 
     constructor() {
         admin = msg.sender;
@@ -40,20 +41,22 @@ contract RefusalProofRegistry {
 
     function setRouter(address newRouter) external {
         if (msg.sender != admin) revert Unauthorized();
+        if (newRouter == address(0)) revert InvalidConfig();
         router = newRouter;
     }
 
     function recordRefusal(
         CovenantTypes.ActionRequest calldata request,
         CovenantTypes.ReasonCode reasonCode,
-        bytes32 actionHash
+        bytes32 actionHash,
+        address proposer
     ) external returns (uint256 proofId) {
         if (msg.sender != router) revert Unauthorized();
         proofId = nextProofId++;
         proofs[proofId] = RefusalProof({
             proofId: proofId,
             covenantId: request.covenantId,
-            agent: request.agent,
+            agent: proposer,
             actionHash: actionHash,
             reasonCode: reasonCode,
             timestamp: uint64(block.timestamp),
@@ -63,8 +66,8 @@ contract RefusalProofRegistry {
             metadataHash: request.metadataHash
         });
         covenantProofs[request.covenantId].push(proofId);
-        agentProofs[request.agent].push(proofId);
-        emit RefusalProofRecorded(proofId, request.covenantId, request.agent, reasonCode, actionHash);
+        agentProofs[proposer].push(proofId);
+        emit RefusalProofRecorded(proofId, request.covenantId, proposer, reasonCode, actionHash);
     }
 
     function getProof(uint256 proofId) external view returns (RefusalProof memory) {

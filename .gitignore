@@ -6,6 +6,7 @@ broadcast/
 # Next.js
 node_modules/
 .next/
+*.tsbuildinfo
 
 # Environment
 .env

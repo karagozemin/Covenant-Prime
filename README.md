@@ -31,7 +31,7 @@ Open [http://localhost:3000](http://localhost:3000), then:
 4. Open Proof Dashboard and inspect a refusal proof.
 5. Show Lifecycle Mode and Auditor View.
 
-The frontend is an interactive demo surface seeded with real Arbitrum Sepolia execution and refusal transactions. New button-triggered scenarios remain deterministic simulations until wallet transaction handlers are connected.
+The frontend connects to MetaMask, submits live Arbitrum Sepolia transactions, waits for confirmation, parses router decisions, and restores covenant receipts and refusal proofs from chain after refresh.
 
 ## Contracts
 
@@ -74,7 +74,9 @@ forge build
 forge test -vv
 ```
 
-Current test suite: **18 passing tests**, covering the required approved, refused, revoked, proof, receipt, vault, and auditor paths.
+Current test suite: **23 passing tests**, covering approved and refused paths, receipt/proof indexing, pause controls, invalid configs, settlement, lifecycle routing, unsupported-action rejection, vault accounting, and auditor access.
+
+GitHub Actions runs formatting, all Foundry tests, contract-size checks, TypeScript validation, and the production frontend build on every push and pull request.
 
 ## Deploy To Arbitrum Sepolia
 
@@ -92,21 +94,19 @@ forge script script/Deploy.s.sol:Deploy \
 
 Deployed to **Arbitrum Sepolia** on June 14, 2026. Full deployment metadata and transaction hashes are available in [`deployments/arbitrum-sepolia.json`](deployments/arbitrum-sepolia.json).
 
-The deployed demo includes Covenant `#1`, one approved mNVDA execution receipt, and five refusal proofs covering cap, asset, recipient, slippage, and disclosure violations. All contracts are source-verified through Sourcify.
-
 | Network | Contract | Address |
 | --- | --- | --- |
-| Arbitrum Sepolia | CovenantVault | [`0x3E17...5aa1`](https://sepolia.arbiscan.io/address/0x3E176ABabbbfeE371821662d15Bbfe1F80d75aa1) |
-| Arbitrum Sepolia | MandateEngine | [`0x7DF0...1dc7`](https://sepolia.arbiscan.io/address/0x7DF0EAB671058A2Dfd1a294a6E1DA92b54191dc7) |
-| Arbitrum Sepolia | ActionRouter | [`0xBd5B...c329`](https://sepolia.arbiscan.io/address/0xBd5B908a4ea337906c21608CE98B9C90E6B7c329) |
-| Arbitrum Sepolia | RefusalProofRegistry | [`0xC40a...0766`](https://sepolia.arbiscan.io/address/0xC40a333420931223Ed6a3979C761E7c33Ae90766) |
-| Arbitrum Sepolia | MockExchange | [`0x2bAb...3E17`](https://sepolia.arbiscan.io/address/0x2bAb2017CAC47929fdf70e9c9cA02A0A3eaf3E17) |
-| Arbitrum Sepolia | MockUSDC | [`0x16AC...91F8`](https://sepolia.arbiscan.io/address/0x16AC734d33377Ad18A8E494A56E0C9Ea11cC91F8) |
-| Arbitrum Sepolia | mAAPL | [`0xb0BC...eff8B`](https://sepolia.arbiscan.io/address/0xb0BCB050B5557F8Db56B9C063dAC6b4DBB4eff8B) |
-| Arbitrum Sepolia | mNVDA | [`0x0885...c110`](https://sepolia.arbiscan.io/address/0x0885e072A83f3b5950E0430C25b3F395962Ac110) |
-| Arbitrum Sepolia | mTSLA | [`0xe6E6...8072`](https://sepolia.arbiscan.io/address/0xe6E61B5f19938e103269611313C64C58FFB68072) |
-| Arbitrum Sepolia | CorporateActionModule | [`0x2e9a...C0C9`](https://sepolia.arbiscan.io/address/0x2e9a0D452842Be3300a14c5439c2A86a651dC0C9) |
-| Arbitrum Sepolia | AuditorDisclosureModule | [`0x2A2b...C928`](https://sepolia.arbiscan.io/address/0x2A2b4aB18A6C475CfcBd8f103106F52256f1C928) |
+| Arbitrum Sepolia | CovenantVault | [`0xD471...A431`](https://sepolia.arbiscan.io/address/0xD471827e261a63e9B08531C9a3bf15a61690A431) |
+| Arbitrum Sepolia | MandateEngine | [`0x5E18...5FdF`](https://sepolia.arbiscan.io/address/0x5E18ec17dcE51C48291136E1d00c43DEDB1d5FdF) |
+| Arbitrum Sepolia | ActionRouter | [`0x2919...1F47`](https://sepolia.arbiscan.io/address/0x29197DcF648AbC3eFfD20197A5B73D5b4c6f1F47) |
+| Arbitrum Sepolia | RefusalProofRegistry | [`0xF144...032a`](https://sepolia.arbiscan.io/address/0xF1449335Cb6c1d6a841DB24B6c2959769D4B032a) |
+| Arbitrum Sepolia | MockExchange | [`0x03cF...49B0`](https://sepolia.arbiscan.io/address/0x03cF8805aAA99fd3Ed0eAedc9690657eE13549B0) |
+| Arbitrum Sepolia | MockUSDC | [`0x6896...f11a`](https://sepolia.arbiscan.io/address/0x68963b6D7E6F60ec10A098985942c3eD51E9f11a) |
+| Arbitrum Sepolia | mAAPL | [`0xDEB5...417b`](https://sepolia.arbiscan.io/address/0xDEB5290991A9a4347E8C6bF21e5495bdDC0E417b) |
+| Arbitrum Sepolia | mNVDA | [`0x794C...33b0`](https://sepolia.arbiscan.io/address/0x794C52f93d94493C636836FD246e1D0E438833b0) |
+| Arbitrum Sepolia | mTSLA | [`0xF118...bBB2`](https://sepolia.arbiscan.io/address/0xF118900aaEa64Ab6e4E4976B96C25037e8D8bBB2) |
+| Arbitrum Sepolia | CorporateActionModule | [`0x6384...f79f`](https://sepolia.arbiscan.io/address/0x6384Cdc7aD1154bB9B2Cbe1C0CAE4616c1A6f79f) |
+| Arbitrum Sepolia | AuditorDisclosureModule | [`0x0b52...d077`](https://sepolia.arbiscan.io/address/0x0b529245b44753dC16339780FD084a40B5f5d077) |
 
 ## Robinhood Chain Compatibility
 
@@ -129,15 +129,13 @@ SUBMISSION.md         Buildathon submission copy
 
 - Testnet hackathon proof of concept; not audited.
 - Mock exchange and mock tokenized stocks do not represent real securities.
-- New frontend demo actions are deterministic simulations; seeded receipt and refusal records link to real Arbitrum Sepolia transactions.
-- No oracle, signature relay, upgrade process, or production custody controls.
+- No oracle, signature relay, upgrade process, multisig/timelock administration, or production custody controls.
 
 ## Roadmap
 
-1. Deploy and verify the core suite on Arbitrum Sepolia and Robinhood Chain testnet.
-2. Connect the dashboard to deployed contracts using viem.
-3. Add EIP-712 signed agent intents and sponsored execution.
-4. Integrate issuer lifecycle modules, oracle-priced limits, and institutional custody.
-5. Add formal verification, independent audits, and production governance.
+1. Add EIP-712 signed agent intents, nonces, session keys, and sponsored execution.
+2. Integrate issuer lifecycle adapters, oracle-priced limits, and institutional custody.
+3. Move administration to a multisig and timelock with monitored pause procedures.
+4. Add invariant/property tests, formal verification, and independent audits.
 
 This is not trust. This is enforceable finance.

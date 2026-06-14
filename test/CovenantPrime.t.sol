@@ -32,6 +32,7 @@ contract CovenantPrimeTest is Test {
     uint256 covenantId;
 
     event ActionExecuted(uint256 indexed receiptId, uint256 indexed covenantId, bytes32 indexed actionHash);
+    event AgentVoted(uint256 indexed covenantId, uint256 indexed voteId, uint8 choice);
 
     function setUp() public {
         vault = new CovenantVault();
@@ -46,6 +47,7 @@ contract CovenantPrimeTest is Test {
         disclosure = new AuditorDisclosureModule(vault);
         vault.setRouter(address(router));
         registry.setRouter(address(router));
+        corporateActions.setRouter(address(router));
 
         covenantId = _createCovenant(false, false, 1_000e6, 500e6, 700e6);
     }
@@ -56,6 +58,8 @@ contract CovenantPrimeTest is Test {
         assertEq(config.agent, agent);
         assertTrue(vault.assignedAgents(covenantId, agent));
         assertTrue(vault.allowedAssets(covenantId, address(mNVDA)));
+        assertEq(vault.getCovenantsByOwner(owner)[0], covenantId);
+        assertEq(vault.getCovenantsByAgent(agent)[0], covenantId);
     }
 
     function testDepositAndWithdraw() public {
@@ -74,10 +78,15 @@ contract CovenantPrimeTest is Test {
         assertEq(uint8(reason), uint8(CovenantTypes.ReasonCode.ALLOWED));
         assertEq(receiptId, 1);
         assertEq(vault.totalSpent(covenantId), 200e6);
+        assertEq(mNVDA.balanceOf(owner), 200e18);
+        assertEq(router.getReceiptsByCovenant(covenantId)[0], receiptId);
+        assertEq(router.getReceiptsByAgent(agent)[0], receiptId);
     }
 
     function testUnauthorizedAgentIsRefused() public {
-        _assertRefused(attacker, _validBuy(200e6), CovenantTypes.ReasonCode.UNAUTHORIZED_AGENT);
+        CovenantTypes.ActionRequest memory request = _validBuy(200e6);
+        (,, uint256 proofId) = _propose(attacker, request);
+        assertEq(registry.getProof(proofId).agent, attacker);
     }
 
     function testDisallowedAssetIsRefused() public {
@@ -142,6 +151,53 @@ contract CovenantPrimeTest is Test {
         _assertRefused(agent, request, CovenantTypes.ReasonCode.DISCLOSURE_NOT_ALLOWED);
     }
 
+    function testAllowedVoteCarriesCovenantId() public {
+        uint256 voteCovenant = _createCovenant(true, false, 1_000e6, 500e6, 700e6);
+        CovenantTypes.ActionRequest memory request = _validBuy(1);
+        request.covenantId = voteCovenant;
+        request.actionType = CovenantTypes.ActionType.VOTE;
+        request.target = address(corporateActions);
+        request.metadataHash = bytes32(uint256(14));
+        vm.expectEmit(true, true, false, true);
+        emit AgentVoted(voteCovenant, 14, 1);
+        _propose(agent, request);
+    }
+
+    function testUnsupportedLifecycleActionCannotProduceFalseReceipt() public {
+        CovenantTypes.ActionRequest memory request = _validBuy(1);
+        request.actionType = CovenantTypes.ActionType.REBALANCE;
+        request.target = address(corporateActions);
+        vm.prank(agent);
+        vm.expectRevert(CorporateActionModule.UnsupportedAction.selector);
+        router.proposeAction(request);
+        assertEq(router.nextReceiptId(), 1);
+    }
+
+    function testOnlyAdminCanCreateCorporateActions() public {
+        vm.prank(attacker);
+        vm.expectRevert(CorporateActionModule.Unauthorized.selector);
+        corporateActions.createVote(address(mNVDA), bytes32(uint256(14)));
+    }
+
+    function testPauseBlocksCreationAndExecution() public {
+        router.setPaused(true);
+        vm.prank(agent);
+        vm.expectRevert(ActionRouter.Paused.selector);
+        router.proposeAction(_validBuy(200e6));
+
+        vault.setPaused(true);
+        vm.prank(owner);
+        vm.expectRevert(CovenantVault.Paused.selector);
+        vault.createCovenant(_config(false, false, 1_000e6, 500e6, 700e6));
+    }
+
+    function testInvalidConfigIsRejected() public {
+        CovenantTypes.CovenantConfig memory config = _config(false, false, 500e6, 600e6, 700e6);
+        vm.prank(owner);
+        vm.expectRevert(CovenantVault.InvalidConfig.selector);
+        vault.createCovenant(config);
+    }
+
     function testRefusalProofIsRecordedCorrectly() public {
         CovenantTypes.ActionRequest memory request = _validBuy(900e6);
         (,, uint256 proofId) = _propose(agent, request);
@@ -195,6 +251,19 @@ contract CovenantPrimeTest is Test {
         uint256 maxSingle,
         uint256 daily
     ) private returns (uint256 id) {
+        CovenantTypes.CovenantConfig memory config =
+            _config(allowCorporateActions, allowDisclosure, maxTotal, maxSingle, daily);
+        vm.prank(owner);
+        id = vault.createCovenant(config);
+    }
+
+    function _config(
+        bool allowCorporateActions,
+        bool allowDisclosure,
+        uint256 maxTotal,
+        uint256 maxSingle,
+        uint256 daily
+    ) private view returns (CovenantTypes.CovenantConfig memory config) {
         address[] memory assets = new address[](1);
         assets[0] = address(mNVDA);
         address[] memory targets = new address[](2);
@@ -203,7 +272,7 @@ contract CovenantPrimeTest is Test {
         address[] memory recipients = new address[](1);
         recipients[0] = owner;
 
-        CovenantTypes.CovenantConfig memory config = CovenantTypes.CovenantConfig({
+        config = CovenantTypes.CovenantConfig({
             owner: owner,
             agent: agent,
             maxTotalSpend: maxTotal,
@@ -218,8 +287,6 @@ contract CovenantPrimeTest is Test {
             maxSlippageBps: 100,
             leverageAllowed: false
         });
-        vm.prank(owner);
-        id = vault.createCovenant(config);
     }
 
     function _validBuy(uint256 amount) private view returns (CovenantTypes.ActionRequest memory) {

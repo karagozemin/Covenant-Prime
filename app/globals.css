@@ -235,6 +235,16 @@ button:not(:disabled):active, a:active {
 .action-list > button {
   min-height: 80px;
 }
+
+.empty-state {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  padding: 24px;
+}
 .action-list strong {
   font-size: 13px;
 }
