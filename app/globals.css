@@ -192,6 +192,157 @@ button:not(:disabled):active, a:active {
   }
 }
 
+/* App readability pass */
+.app {
+  color: #10131a;
+}
+.app-header nav button {
+  font-size: 14px;
+}
+.network,
+.wallet-button {
+  font-size: 11px;
+}
+.app-title > div > span {
+  font-size: 11px;
+}
+.app-title h1 {
+  font-size: 48px;
+}
+.app-title p {
+  color: #626875;
+  font-size: 14px;
+}
+.app-metric span {
+  color: #606673;
+  font-size: 12px;
+}
+.app-metric strong {
+  font-size: 31px;
+}
+.app-metric p {
+  font-size: 11px;
+  font-weight: 600;
+}
+.panel-title h2 {
+  font-size: 16px;
+}
+.panel-title button,
+.enforced,
+.live {
+  font-size: 10px;
+}
+.action-list > button {
+  min-height: 80px;
+}
+.action-list strong {
+  font-size: 13px;
+}
+.action-list small {
+  color: #626875;
+  font-size: 11px;
+  margin-top: 5px;
+}
+.action-amount {
+  font-size: 11px;
+}
+.status-pill {
+  font-size: 10px;
+  padding: 6px 9px;
+}
+.covenant-number > span {
+  color: #626875;
+  font-size: 11px;
+}
+.covenant-number strong {
+  font-size: 35px;
+}
+.covenant-number small {
+  color: #626875;
+  font-size: 12px;
+}
+.covenant-card dt {
+  color: #666c78;
+  font-size: 10px;
+}
+.covenant-card dd {
+  font-size: 11px;
+}
+.asset-pills span {
+  font-size: 10px;
+  padding: 6px 9px;
+}
+.app-secondary,
+.app-primary {
+  font-size: 12px;
+}
+.scenario-list strong {
+  font-size: 13px;
+}
+.scenario-list small {
+  color: #b0b5c0;
+  font-size: 11px;
+}
+.scenario-list > button > span:not(.scenario-icon) {
+  font-size: 10px;
+}
+.proof-banner p,
+.policy-row span,
+.policy-row strong {
+  font-size: 12px;
+}
+
+/* Landing coral accents */
+.landing .announcement {
+  border-color: rgba(255,107,85,.45);
+  box-shadow: 0 3px 0 rgba(255,107,85,.18);
+}
+.landing .announcement svg {
+  color: #ff6b55;
+}
+.landing .big-secondary:hover,
+.landing .nav-ghost:hover {
+  border-color: #ff6b55;
+  color: #d94f39;
+  box-shadow: 0 3px 0 rgba(255,107,85,.18);
+}
+.landing .hero-foot span:nth-child(2) svg {
+  color: #ff6b55;
+}
+.landing .ticker i:nth-of-type(2) {
+  background: #ff6b55;
+}
+.landing .section-label:before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  margin-right: 7px;
+  border-radius: 3px;
+  background: #ff6b55;
+  vertical-align: middle;
+}
+.landing .demo-scenarios button:hover {
+  box-shadow: inset 3px 0 #ff6b55;
+}
+.landing .life:hover {
+  color: #d94f39;
+}
+.landing .life:hover > span,
+.landing .life:hover > svg {
+  color: #ff6b55;
+}
+.landing .proof-card-top svg,
+.landing .proof-result span {
+  color: #ff6b55;
+}
+.landing .proof-hash {
+  border-left: 3px solid #ff6b55;
+}
+.landing .developer .big-secondary {
+  border-color: rgba(255,107,85,.55);
+}
+
 .machine-proof {
   margin: 11px 0 0;
   padding: 9px 11px;
