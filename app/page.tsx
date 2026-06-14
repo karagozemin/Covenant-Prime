@@ -553,7 +553,7 @@ function Landing({ openApp, runScenario, toast, closeToast, processing }: { open
       </section>
 
       <section className="developer" id="developers">
-        <div><span className="section-label">Built for builders</span><h2>Plug enforceable authority into any agent.</h2><p>Standard Solidity contracts. Simple action requests. Stable reason codes. Deploy on Arbitrum or any EVM-compatible chain.</p><button className="big-secondary"><Code2 size={16} /> Read the architecture</button></div>
+        <div><span className="section-label">Built for builders</span><h2>Plug enforceable authority into any agent.</h2><p>Standard Solidity contracts. Simple action requests. Stable reason codes. Deploy on Arbitrum or any EVM-compatible chain.</p><a className="big-secondary" href="https://github.com/karagozemin/Covenant-Prime/blob/main/ARCHITECTURE.md" target="_blank" rel="noreferrer"><Code2 size={16} /> Read the architecture</a></div>
         <pre><code><span>{"// Agent proposes an action"}</span>{"\n"}router.proposeAction({"{"}{"\n"}  covenantId: <b>1</b>,{"\n"}  actionType: <em>BUY</em>,{"\n"}  asset: mNVDA,{"\n"}  amount: <b>200e6</b>{"\n"}{"}"});{"\n\n"}<span>{"// Allowed → execute + receipt"}</span>{"\n"}<span>{"// Refused → immutable proof"}</span></code></pre>
       </section>
 
